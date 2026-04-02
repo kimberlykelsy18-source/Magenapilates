@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
-import { Trash2, Eye, RefreshCw } from 'lucide-react';
+import { Trash2, Eye, RefreshCw, Printer } from 'lucide-react';
 import { adminHeaders } from './AdminDashboard';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -27,6 +27,8 @@ interface Order {
   payment_method: string;
   status: string;
   created_at: string;
+  pesapal_tracking_id?: string | null;
+  payment_reference?: string | null;
 }
 
 function toShortId(n: number | undefined) {
@@ -106,6 +108,85 @@ export function AdminOrders() {
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete order');
     }
+  };
+
+  const printOrder = (order: Order) => {
+    const shortId = toShortId(order.order_number);
+    const total = (Number(order.total_amount) + Number(order.deposit_amount || 0)).toLocaleString();
+    const statusLabel = order.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const statusColor = order.status === 'confirmed' || order.status === 'completed' ? 'green' : order.status === 'cancelled' ? 'red' : '#b45309';
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Order ${shortId} — Magena Pilates</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; color: #333; background: #fff; padding: 32px; }
+    .header { background: #3D3530; color: #EBE6DD; padding: 24px 32px; text-align: center; margin-bottom: 0; }
+    .header h1 { font-size: 20px; letter-spacing: 4px; }
+    .subheader { background: #6B5C53; color: #EBE6DD; padding: 14px 32px; text-align: center; margin-bottom: 24px; }
+    .subheader p { font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px; }
+    .subheader h2 { font-size: 20px; }
+    .section { margin-bottom: 20px; }
+    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #888; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 10px; }
+    .row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; border-bottom: 1px solid #f5f5f5; }
+    .row .label { color: #666; }
+    .row .val { font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+    .total-row { display: flex; justify-content: space-between; padding: 10px 0; font-size: 15px; font-weight: bold; border-top: 2px solid #3D3530; margin-top: 8px; }
+    .status-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; color: ${statusColor}; border: 1px solid ${statusColor}; }
+    .footer { margin-top: 32px; text-align: center; font-size: 11px; color: #aaa; border-top: 1px solid #eee; padding-top: 16px; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>MAGENA PILATES</h1></div>
+  <div class="subheader"><p>Pre-Order Receipt</p><h2>${shortId}</h2></div>
+
+  <div class="section">
+    <div class="section-title">Order Details</div>
+    <div class="row"><span class="label">Order ID</span><span class="val">${shortId}</span></div>
+    <div class="row"><span class="label">Date</span><span class="val">${new Date(order.created_at).toLocaleString()}</span></div>
+    <div class="row"><span class="label">Status</span><span class="val"><span class="status-badge">${statusLabel}</span></span></div>
+    <div class="row"><span class="label">Product</span><span class="val">${order.product_name}</span></div>
+    <div class="row"><span class="label">Order Type</span><span class="val" style="text-transform:capitalize">${order.order_type}</span></div>
+    <div class="row"><span class="label">Quantity</span><span class="val">${order.quantity}</span></div>
+    ${order.wants_engraving ? '<div class="row"><span class="label">Engraving</span><span class="val">FREE Logo Engraving</span></div>' : ''}
+  </div>
+
+  <div class="section">
+    <div class="section-title">Customer</div>
+    <div class="row"><span class="label">Name</span><span class="val">${order.customer_name}</span></div>
+    <div class="row"><span class="label">Email</span><span class="val">${order.customer_email}</span></div>
+    <div class="row"><span class="label">Phone</span><span class="val">${order.customer_phone}</span></div>
+    <div class="row"><span class="label">Delivery Address</span><span class="val">${order.customer_address || '—'}</span></div>
+    ${order.notes ? `<div class="row"><span class="label">Notes</span><span class="val">${order.notes}</span></div>` : ''}
+  </div>
+
+  <div class="section">
+    <div class="section-title">Payment</div>
+    <div class="row"><span class="label">Method</span><span class="val" style="text-transform:uppercase">${order.payment_method}</span></div>
+    ${order.payment_reference ? `<div class="row"><span class="label">Payment Ref</span><span class="val" style="font-family:monospace">${order.payment_reference}</span></div>` : ''}
+    ${order.pesapal_tracking_id ? `<div class="row"><span class="label">Transaction ID</span><span class="val" style="font-family:monospace;font-size:11px">${order.pesapal_tracking_id}</span></div>` : ''}
+    <div class="row"><span class="label">Product Amount</span><span class="val">KES ${Number(order.total_amount).toLocaleString()}</span></div>
+    ${order.deposit_amount > 0 ? `<div class="row"><span class="label">Deposit</span><span class="val">KES ${Number(order.deposit_amount).toLocaleString()}</span></div>` : ''}
+    <div class="total-row"><span>Total Paid</span><span>KES ${total}</span></div>
+  </div>
+
+  <div class="footer">
+    <p>Magena Pilates · Nairobi, Kenya</p>
+    <p style="margin-top:4px">Printed on ${new Date().toLocaleString()}</p>
+  </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=700,height=900');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
   };
 
   if (loading) {
@@ -260,6 +341,18 @@ export function AdminOrders() {
                 <Label>Payment Method:</Label>
                 <span className="uppercase">{selectedOrder.payment_method}</span>
               </div>
+              {selectedOrder.pesapal_tracking_id && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Label>Transaction ID:</Label>
+                  <span className="font-mono text-xs break-all">{selectedOrder.pesapal_tracking_id}</span>
+                </div>
+              )}
+              {selectedOrder.payment_reference && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Label>Payment Ref:</Label>
+                  <span className="font-mono font-medium">{selectedOrder.payment_reference}</span>
+                </div>
+              )}
               <div className="border-t pt-3 grid grid-cols-2 gap-2">
                 <Label>Customer Name:</Label>
                 <span>{selectedOrder.customer_name}</span>
@@ -295,6 +388,16 @@ export function AdminOrders() {
               <div className="grid grid-cols-2 gap-2 font-medium">
                 <Label>Total Paid:</Label>
                 <span>KES {(Number(selectedOrder.total_amount) + Number(selectedOrder.deposit_amount || 0)).toLocaleString()}</span>
+              </div>
+              <div className="pt-4 border-t">
+                <Button
+                  onClick={() => printOrder(selectedOrder)}
+                  variant="outline"
+                  className="w-full border-[#3D3530] text-[#3D3530] hover:bg-[#3D3530] hover:text-white"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print Order Receipt
+                </Button>
               </div>
             </div>
           )}

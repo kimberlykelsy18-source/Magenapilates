@@ -25,6 +25,7 @@ export function OrderSuccess() {
 
   const [status, setStatus] = useState<'loading' | 'completed' | 'failed' | 'pending' | 'error'>('loading');
   const [order, setOrder] = useState<Order | null>(null);
+  const [paymentReference, setPaymentReference] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function OrderSuccess() {
 
         if (data.status === 'completed') {
           setOrder(data.order);
+          setPaymentReference(data.payment_reference || null);
           setStatus('completed');
         } else if (data.status === 'failed' || data.status === 'reversed') {
           setStatus('failed');
@@ -96,12 +98,17 @@ export function OrderSuccess() {
           {/* Success banner */}
           <div className="bg-green-600 px-8 py-5 text-center">
             <CheckCircle2 className="h-10 w-10 text-white mx-auto mb-2" />
-            <p className="text-white/80 text-xs uppercase tracking-widest mb-1">Pre-Order Confirmed</p>
+            <p className="text-white text-lg font-semibold mb-1">Payment Successful</p>
+            <p className="text-white/80 text-xs uppercase tracking-widest mb-2">Pre-Order Confirmed</p>
             <h2 className="text-white text-2xl font-medium">{order.short_id}</h2>
           </div>
 
           {/* Body */}
           <div className="p-8">
+            <div className="flex items-center gap-2 mb-4 bg-green-50 border border-green-200 rounded px-3 py-2">
+              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+              <p className="text-green-800 text-sm font-medium">Payment verified and order confirmed</p>
+            </div>
             <p className="text-gray-600 mb-6 text-sm">
               Hi <strong>{order.customer_name}</strong>! Your pre-order is confirmed and a receipt has been sent to <strong>{order.customer_email}</strong>.
             </p>
@@ -127,6 +134,18 @@ export function OrderSuccess() {
                 <span className="text-gray-500">Amount Paid</span>
                 <span className="font-medium text-green-700">KES {amountPaid}</span>
               </div>
+              {trackingId && (
+                <div className="flex justify-between border-t pt-2">
+                  <span className="text-gray-500">Transaction ID</span>
+                  <span className="font-mono text-xs text-gray-600 break-all text-right max-w-[180px]">{trackingId}</span>
+                </div>
+              )}
+              {paymentReference && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Payment Ref</span>
+                  <span className="font-mono text-sm font-medium text-[#3D3530]">{paymentReference}</span>
+                </div>
+              )}
             </div>
 
             <div className="mt-6 bg-green-50 border-l-4 border-green-500 p-3 text-xs text-green-800">
