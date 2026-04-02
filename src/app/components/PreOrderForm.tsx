@@ -5,7 +5,6 @@ import { Label } from './ui/label';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Textarea } from './ui/textarea';
 import { Checkbox } from './ui/checkbox';
-import { storage } from '../utils/storage';
 import { toast } from 'sonner';
 import { CheckoutFlow } from './CheckoutFlow';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
@@ -83,11 +82,8 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
     setStep('checkout');
   };
 
-  const handlePaymentSuccess = () => {
-    if (pendingOrder) {
-      storage.addOrder(pendingOrder);
-      toast.success('Payment successful! Your pre-order is confirmed.');
-    }
+  const handlePaymentSuccess = (_orderId?: string) => {
+    toast.success('Your pre-order has been placed! Check your email for confirmation.');
     setStep('form');
     setPendingOrder(null);
     onSuccess();

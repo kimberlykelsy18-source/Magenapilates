@@ -1,8 +1,10 @@
 import { Product } from '../types';
-import spineImg from 'figma:asset/921f947b1987e7c9ce1568d1fe0db68b6bab1ef6.png';
-import barrelImg from 'figma:asset/471d1ab52f3a2d8d1bf12ba882b9598f0c5665c9.png';
-import chairImg from 'figma:asset/3b04fd289d3e2d0fa742db6926de03e16d8ee3c7.png';
-import reformerImg from 'figma:asset/4f4f36adcb55713c37d5a19b8781b67397eeab60.png';
+
+// Using standard relative paths to the assets folder
+const spineImg = new URL('../../assets/921f947b1987e7c9ce1568d1fe0db68b6bab1ef6.png', import.meta.url).href;
+const barrelImg = new URL('../../assets/471d1ab52f3a2d8d1bf12ba882b9598f0c5665c9.png', import.meta.url).href;
+const chairImg = new URL('../../assets/3b04fd289d3e2d0fa742db6926de03e16d8ee3c7.png', import.meta.url).href;
+const reformerImg = new URL('../../assets/4f4f36adcb55713c37d5a19b8781b67397eeab60.png', import.meta.url).href;
 
 export const initialProducts: Product[] = [
   {

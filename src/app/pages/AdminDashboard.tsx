@@ -2,26 +2,53 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { Package, ShoppingCart, LogOut, Settings } from 'lucide-react';
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+export function getAdminToken() {
+  return localStorage.getItem('admin_token');
+}
+
+export function adminHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${getAdminToken()}`,
+  };
+}
+
 export function AdminDashboard() {
   const location = useLocation();
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(
-    localStorage.getItem('admin_auth') === 'true'
+    !!localStorage.getItem('admin_token')
   );
+  const [loginError, setLoginError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple password - change this to your preferred password
-    if (password === 'magena2025') {
-      localStorage.setItem('admin_auth', 'true');
+    setLoginError('');
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+
+      localStorage.setItem('admin_token', data.token);
       setIsAuthenticated(true);
-    } else {
-      alert('Incorrect password');
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_auth');
+    localStorage.removeItem('admin_token');
     setIsAuthenticated(false);
     setPassword('');
   };
@@ -43,8 +70,13 @@ export function AdminDashboard() {
                 required
               />
             </div>
-            <button type="submit" className="w-full bg-[#3D3530] text-white py-2 hover:bg-[#2D2520]">
-              Login
+            {loginError && <p className="text-red-600 text-sm mb-3">{loginError}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#3D3530] text-white py-2 hover:bg-[#2D2520] disabled:opacity-60"
+            >
+              {loading ? 'Logging in...' : 'Login'}
             </button>
           </form>
         </div>
@@ -58,10 +90,9 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-[#3D3530] text-white border-b border-[#2D2520]">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl">MAGENA PILATES - Admin</h1>
+          <h1 className="text-xl">MAGENA PILATES — Admin</h1>
           <div className="flex gap-4 items-center">
             <Link to="/" className="text-sm hover:underline">
               View Customer Page
@@ -77,16 +108,13 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      {/* Navigation */}
       <nav className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1">
             <Link to="/admin/orders">
               <button
                 className={`px-6 py-3 border-b-2 ${
-                  isOrdersPage
-                    ? 'border-[#3D3530] font-medium'
-                    : 'border-transparent hover:border-gray-300'
+                  isOrdersPage ? 'border-[#3D3530] font-medium' : 'border-transparent hover:border-gray-300'
                 }`}
               >
                 <ShoppingCart className="h-4 w-4 inline mr-2" />
@@ -96,9 +124,7 @@ export function AdminDashboard() {
             <Link to="/admin/products">
               <button
                 className={`px-6 py-3 border-b-2 ${
-                  isProductsPage
-                    ? 'border-[#3D3530] font-medium'
-                    : 'border-transparent hover:border-gray-300'
+                  isProductsPage ? 'border-[#3D3530] font-medium' : 'border-transparent hover:border-gray-300'
                 }`}
               >
                 <Package className="h-4 w-4 inline mr-2" />
@@ -108,9 +134,7 @@ export function AdminDashboard() {
             <Link to="/admin/settings">
               <button
                 className={`px-6 py-3 border-b-2 ${
-                  isSettingsPage
-                    ? 'border-[#3D3530] font-medium'
-                    : 'border-transparent hover:border-gray-300'
+                  isSettingsPage ? 'border-[#3D3530] font-medium' : 'border-transparent hover:border-gray-300'
                 }`}
               >
                 <Settings className="h-4 w-4 inline mr-2" />
@@ -121,7 +145,6 @@ export function AdminDashboard() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         <Outlet />
       </main>

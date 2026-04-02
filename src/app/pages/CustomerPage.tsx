@@ -7,7 +7,31 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Minus, Plus, Globe } from 'lucide-react';
 import { Currency, currencies, convertPrice, formatPrice } from '../utils/currency';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import logoImg from 'figma:asset/053cd6f353a6bc54a9e76207dbf8b76552b71b53.png';
+import logoImg from '../../assets/053cd6f353a6bc54a9e76207dbf8b76552b71b53.png';
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+// Map API product shape (snake_case) to frontend Product shape (camelCase)
+function mapApiProduct(p: any): Product {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    imageUrl: p.image_url || '',
+    purchasePrice: p.purchase_price ? Number(p.purchase_price) : undefined,
+    rentalPrice: p.rental_price ? Number(p.rental_price) : undefined,
+    rentalDeposit: p.rental_deposit ? Number(p.rental_deposit) : undefined,
+    status: p.status,
+  };
+}
+
+function mapApiSettings(s: any): SiteSettings {
+  return {
+    terms: s.terms || [],
+    engravingPrice: s.engraving_price ?? 3500,
+    rentalFixedMonths: s.rental_fixed_months ?? 5,
+  };
+}
 
 export function CustomerPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -18,25 +42,37 @@ export function CustomerPage() {
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('KES');
 
   useEffect(() => {
-    // Check data version and refresh if needed
-    if (!storage.isDataVersionCurrent()) {
-      storage.refreshData();
-    }
-    
-    // Clear old data and use fresh initial products
-    storage.saveProducts(initialProducts);
-    const storedProducts = initialProducts;
-    setProducts(storedProducts);
-    
-    // Initialize quantities
-    const initialQuantities: Record<string, number> = {};
-    storedProducts.forEach(p => {
-      initialQuantities[p.id] = 1;
-    });
-    setQuantities(initialQuantities);
-    
-    // Load settings
-    setSettings(storage.getSettings());
+    // Load products — API first, fallback to local initial data
+    fetch(`${API}/api/products`)
+      .then((r) => r.json())
+      .then((data: any[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped = data.map(mapApiProduct);
+          setProducts(mapped);
+          const qs: Record<string, number> = {};
+          mapped.forEach((p) => { qs[p.id] = 1; });
+          setQuantities(qs);
+        } else {
+          throw new Error('empty');
+        }
+      })
+      .catch(() => {
+        // Backend not set up yet — use hardcoded initial products
+        setProducts(initialProducts);
+        const qs: Record<string, number> = {};
+        initialProducts.forEach((p) => { qs[p.id] = 1; });
+        setQuantities(qs);
+      });
+
+    // Load settings — API first, fallback to localStorage
+    fetch(`${API}/api/settings`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && !data.error) setSettings(mapApiSettings(data));
+      })
+      .catch(() => {
+        setSettings(storage.getSettings());
+      });
   }, []);
 
   const handleOrderClick = (product: Product) => {
@@ -45,10 +81,7 @@ export function CustomerPage() {
   };
 
   const updateQuantity = (productId: string, newQty: number) => {
-    setQuantities(prev => ({
-      ...prev,
-      [productId]: Math.max(1, newQty)
-    }));
+    setQuantities((prev) => ({ ...prev, [productId]: Math.max(1, newQty) }));
   };
 
   return (
@@ -64,14 +97,16 @@ export function CustomerPage() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         {/* Pre-order Terms */}
-        <div className="bg-white border border-[#3D3530] p-6 mb-8">
-          <h2 className="text-lg mb-3 text-[#3D3530]">PRE-ORDER TERMS</h2>
-          <div className="space-y-3 text-sm text-[#3D3530]">
-            {settings.terms.map((term, index) => (
-              <p key={index}>• {term}</p>
-            ))}
+        {settings.terms.length > 0 && (
+          <div className="bg-white border border-[#3D3530] p-6 mb-8">
+            <h2 className="text-lg mb-3 text-[#3D3530]">PRE-ORDER TERMS</h2>
+            <div className="space-y-3 text-sm text-[#3D3530]">
+              {settings.terms.map((term, index) => (
+                <p key={index}>• {term}</p>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Currency Selector */}
         <div className="mb-6 bg-white border border-[#3D3530] p-4">
@@ -113,10 +148,7 @@ export function CustomerPage() {
                       src={product.imageUrl}
                       alt={product.name}
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.error('Image failed to load:', product.imageUrl);
-                        e.currentTarget.style.display = 'none';
-                      }}
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
                   </div>
                 </div>
@@ -164,10 +196,7 @@ export function CustomerPage() {
                         <label className="block text-sm text-[#3D3530] mb-2">Quantity:</label>
                         <div className="flex items-center gap-3">
                           <button
-                            onClick={() => {
-                              const newQty = Math.max(1, quantities[product.id] - 1);
-                              updateQuantity(product.id, newQty);
-                            }}
+                            onClick={() => updateQuantity(product.id, quantities[product.id] - 1)}
                             className="border border-[#3D3530] p-2 hover:bg-gray-100"
                           >
                             <Minus className="h-4 w-4" />
@@ -219,10 +248,7 @@ export function CustomerPage() {
               }}
               onSuccess={() => {
                 setShowForm(false);
-                setQuantities(prev => ({
-                  ...prev,
-                  [selectedProduct.id]: 1
-                }));
+                setQuantities((prev) => ({ ...prev, [selectedProduct.id]: 1 }));
               }}
             />
           )}
