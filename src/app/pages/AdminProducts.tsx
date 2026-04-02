@@ -4,7 +4,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { Pencil, Plus, Upload, Trash2 } from 'lucide-react';
 import { adminHeaders } from './AdminDashboard';
@@ -223,15 +223,15 @@ export function AdminProducts() {
       </div>
 
       <Dialog open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="w-[95vw]">
+          <DialogHeader>
             <DialogTitle>{editingProduct ? 'Edit Product' : 'Add Product'}</DialogTitle>
             <DialogDescription>
               {editingProduct ? 'Edit the product details.' : 'Add a new Pilates product.'}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 pr-1">
+          <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 px-6 py-4">
             <div>
               <Label htmlFor="name">Product Name *</Label>
               <Input
@@ -335,19 +335,19 @@ export function AdminProducts() {
               </div>
             </div>
 
-            <div className="flex gap-2 pt-4">
-              <Button
-                type="submit"
-                disabled={saving}
-                className="bg-[#3D3530] text-white hover:bg-[#2D2520] disabled:opacity-60"
-              >
-                {saving ? 'Saving...' : editingProduct ? 'Update Product' : 'Add Product'}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => { setShowForm(false); resetForm(); }}>
-                Cancel
-              </Button>
-            </div>
           </form>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => { setShowForm(false); resetForm(); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={saving}
+              className="bg-[#3D3530] text-white hover:bg-[#2D2520] disabled:opacity-60"
+            >
+              {saving ? 'Saving...' : editingProduct ? 'Update Product' : 'Add Product'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

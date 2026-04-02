@@ -98,20 +98,22 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
   if (step === 'checkout' && pendingOrder) {
     return (
       <Dialog open={true} onOpenChange={(open) => !open && handlePaymentCancel()}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-[#3D3530]">Payment Checkout</DialogTitle>
             <DialogDescription className="text-sm text-gray-500">
               Please review your order and proceed with payment.
             </DialogDescription>
           </DialogHeader>
-          <CheckoutFlow
-            order={pendingOrder}
-            totalAmount={calculateTotal() + getDeposit()}
-            currency={selectedCurrency}
-            onSuccess={handlePaymentSuccess}
-            onCancel={handlePaymentCancel}
-          />
+          <div className="overflow-y-auto flex-1 px-6 py-4">
+            <CheckoutFlow
+              order={pendingOrder}
+              totalAmount={calculateTotal() + getDeposit()}
+              currency={selectedCurrency}
+              onSuccess={handlePaymentSuccess}
+              onCancel={handlePaymentCancel}
+            />
+          </div>
         </DialogContent>
       </Dialog>
     );

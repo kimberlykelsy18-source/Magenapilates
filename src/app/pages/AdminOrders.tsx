@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
 import { Trash2, Eye, RefreshCw, Printer } from 'lucide-react';
@@ -353,7 +353,7 @@ export function AdminOrders() {
             <DialogDescription>Full details for this pre-order.</DialogDescription>
           </DialogHeader>
           {selectedOrder && (
-            <div className="space-y-3 text-sm overflow-y-auto flex-1">
+            <div className="space-y-3 text-sm overflow-y-auto flex-1 px-6 py-4">
               <div className="grid grid-cols-2 gap-2">
                 <Label>Order Date:</Label>
                 <span>{new Date(selectedOrder.created_at).toLocaleString()}</span>
@@ -432,17 +432,19 @@ export function AdminOrders() {
                 <Label>Total Paid:</Label>
                 <span>KES {(Number(selectedOrder.total_amount) + Number(selectedOrder.deposit_amount || 0)).toLocaleString()}</span>
               </div>
-              <div className="pt-4 border-t">
-                <Button
-                  onClick={() => printOrder(selectedOrder)}
-                  variant="outline"
-                  className="w-full border-[#3D3530] text-[#3D3530] hover:bg-[#3D3530] hover:text-white"
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Print Order Receipt
-                </Button>
-              </div>
             </div>
+          )}
+          {selectedOrder && (
+            <DialogFooter>
+              <Button
+                onClick={() => printOrder(selectedOrder)}
+                variant="outline"
+                className="border-[#3D3530] text-[#3D3530] hover:bg-[#3D3530] hover:text-white"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Print Order Receipt
+              </Button>
+            </DialogFooter>
           )}
         </DialogContent>
       </Dialog>

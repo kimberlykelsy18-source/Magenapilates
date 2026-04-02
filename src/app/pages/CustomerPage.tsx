@@ -230,28 +230,30 @@ export function CustomerPage() {
 
       {/* Pre-order Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
+        <DialogContent className="max-w-2xl bg-white">
           <DialogHeader>
             <DialogTitle className="text-[#3D3530]">Complete Your Order</DialogTitle>
             <DialogDescription className="text-sm text-[#3D3530]">Please fill in the details to complete your order.</DialogDescription>
           </DialogHeader>
-          {selectedProduct && (
-            <PreOrderForm
-              product={selectedProduct}
-              quantity={quantities[selectedProduct.id]}
-              selectedCurrency={currencies[selectedCurrency].code}
-              currencySymbol={currencies[selectedCurrency].symbol}
-              convertedPrices={{
-                purchasePrice: selectedProduct.purchasePrice ? convertPrice(selectedProduct.purchasePrice, selectedCurrency) : undefined,
-                rentalPrice: selectedProduct.rentalPrice ? convertPrice(selectedProduct.rentalPrice, selectedCurrency) : undefined,
-                rentalDeposit: selectedProduct.rentalDeposit ? convertPrice(selectedProduct.rentalDeposit, selectedCurrency) : undefined,
-              }}
-              onSuccess={() => {
-                setShowForm(false);
-                setQuantities((prev) => ({ ...prev, [selectedProduct.id]: 1 }));
-              }}
-            />
-          )}
+          <div className="overflow-y-auto flex-1 px-6 py-4">
+            {selectedProduct && (
+              <PreOrderForm
+                product={selectedProduct}
+                quantity={quantities[selectedProduct.id]}
+                selectedCurrency={currencies[selectedCurrency].code}
+                currencySymbol={currencies[selectedCurrency].symbol}
+                convertedPrices={{
+                  purchasePrice: selectedProduct.purchasePrice ? convertPrice(selectedProduct.purchasePrice, selectedCurrency) : undefined,
+                  rentalPrice: selectedProduct.rentalPrice ? convertPrice(selectedProduct.rentalPrice, selectedCurrency) : undefined,
+                  rentalDeposit: selectedProduct.rentalDeposit ? convertPrice(selectedProduct.rentalDeposit, selectedCurrency) : undefined,
+                }}
+                onSuccess={() => {
+                  setShowForm(false);
+                  setQuantities((prev) => ({ ...prev, [selectedProduct.id]: 1 }));
+                }}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
