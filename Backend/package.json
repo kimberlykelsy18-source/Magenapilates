@@ -2,6 +2,9 @@
   "name": "magena-pilates-backend",
   "version": "1.0.0",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
