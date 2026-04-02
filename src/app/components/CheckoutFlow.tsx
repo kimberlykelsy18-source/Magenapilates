@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Loader2, CreditCard, Smartphone, ExternalLink } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 interface CheckoutFlowProps {
   order: PreOrder;

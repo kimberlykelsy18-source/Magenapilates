@@ -9,7 +9,7 @@ import { Currency, currencies, convertPrice, formatPrice } from '../utils/curren
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import logoImg from '../../assets/053cd6f353a6bc54a9e76207dbf8b76552b71b53.png';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 // Map API product shape (snake_case) to frontend Product shape (camelCase)
 function mapApiProduct(p: any): Product {
