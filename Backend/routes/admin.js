@@ -56,14 +56,27 @@ module.exports = ({ serviceSupabase }) => {
 
     let query = serviceSupabase
       .from('pre_orders')
-      .select('*')
+      .select('*, payments(checkout_request_id, payment_reference, status)')
       .order('created_at', { ascending: false });
 
     if (status) query = query.eq('status', status);
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+
+    // Flatten the first payment record into each order for convenience
+    const orders = (data || []).map((o) => {
+      const payment = Array.isArray(o.payments) ? o.payments[0] : null;
+      return {
+        ...o,
+        pesapal_tracking_id: payment?.checkout_request_id || null,
+        payment_reference: payment?.payment_reference || null,
+        payment_status: payment?.status || null,
+        payments: undefined,
+      };
+    });
+
+    res.json(orders);
   });
 
   // PATCH /api/admin/orders/:id — update order status

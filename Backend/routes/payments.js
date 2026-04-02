@@ -66,7 +66,7 @@ module.exports = ({ transporter }) => {
     try {
       const { data: existing } = await db
         .from('payments')
-        .select('status, order_id')
+        .select('status, order_id, payment_reference')
         .eq('checkout_request_id', orderTrackingId)
         .maybeSingle();
 
@@ -83,6 +83,8 @@ module.exports = ({ transporter }) => {
         return res.json({
           status: 'completed',
           order_id: existing.order_id,
+          pesapal_tracking_id: orderTrackingId,
+          payment_reference: existing.payment_reference,
           order: order ? { ...order, short_id: toShortOrderId(order.order_number) } : null,
         });
       }
@@ -163,6 +165,8 @@ async function handlePesapalPayment(orderTrackingId, db, transporter) {
     return {
       status: 'completed',
       order_id: payment.order_id,
+      pesapal_tracking_id: orderTrackingId,
+      payment_reference: txStatus.confirmation_code || null,
       order: { ...order, short_id: shortId, status: 'confirmed' },
     };
 
