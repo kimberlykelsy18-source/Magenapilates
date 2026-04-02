@@ -19,13 +19,34 @@ const PORT = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
 
-// CORS — only allow the frontend origin in production
-const allowedOrigin = process.env.FRONTEND_URL || '*';
-app.use(cors({
-  origin: allowedOrigin,
+// CORS — allow the configured frontend URL plus any Vercel preview deployments
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow server-to-server requests (no origin header) and Pesapal IPN calls
+    if (!origin) return callback(null, true);
+
+    const allowed = process.env.FRONTEND_URL?.trim();
+
+    // Allow exact match, any vercel.app preview URL, and localhost for dev
+    if (
+      !allowed ||                                    // not set → allow all
+      origin === allowed ||                          // exact production URL
+      /^https?:\/\/localhost(:\d+)?$/.test(origin) || // local dev
+      /\.vercel\.app$/.test(origin)                  // Vercel preview URLs
+    ) {
+      return callback(null, true);
+    }
+
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+  credentials: false,
+};
+
+app.use(cors(corsOptions));
+// Handle OPTIONS preflight for all routes
+app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
@@ -89,11 +110,15 @@ app.get('/', (req, res) => {
   res.json({ message: 'Magena Pilates Backend ✅' });
 });
 
-// Global JSON error handler (must be last middleware)
+// Global JSON error handler — must have exactly 4 params to be treated as error middleware
 // eslint-disable-next-line no-unused-vars
-app.use((err, req, res, _next) => {
+app.use(function errorHandler(err, req, res, next) {
+  // CORS errors from the origin check
+  if (err.message && err.message.startsWith('CORS:')) {
+    return res.status(403).json({ error: err.message });
+  }
   console.error('[Error]', err.message);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 
 app.listen(PORT, () => {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PreOrder } from '../types';
 import { Button } from './ui/button';
 import { Loader2, CreditCard, Smartphone, ExternalLink } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -24,7 +25,7 @@ export function CheckoutFlow({ order, totalAmount, currency, onCancel }: Checkou
     setError('');
 
     try {
-      const res = await fetch(`${API}/api/orders`, {
+      const { ok, data } = await apiFetch(`${API}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -44,8 +45,7 @@ export function CheckoutFlow({ order, totalAmount, currency, onCancel }: Checkou
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create order');
+      if (!ok) throw new Error(data?.error || 'Failed to create order');
 
       // Redirect to Pesapal hosted checkout (handles both card and M-PESA)
       window.location.href = data.redirect_url;

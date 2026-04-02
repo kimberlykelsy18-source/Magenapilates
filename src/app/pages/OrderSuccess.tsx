@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -35,8 +36,7 @@ export function OrderSuccess() {
 
     async function poll() {
       try {
-        const res = await fetch(`${API}/api/pesapal/status/${trackingId}`);
-        const data = await res.json();
+        const { data } = await apiFetch(`${API}/api/pesapal/status/${trackingId}`);
 
         if (cancelled) return;
 
