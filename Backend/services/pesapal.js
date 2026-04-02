@@ -14,8 +14,8 @@ async function getToken() {
   const { data } = await axios.post(
     `${BASE_URL}/api/Auth/RequestToken`,
     {
-      consumer_key: process.env.PESAPAL_CONSUMER_KEY,
-      consumer_secret: process.env.PESAPAL_CONSUMER_SECRET,
+      consumer_key: process.env.PESAPAL_CONSUMER_KEY?.trim(),
+      consumer_secret: process.env.PESAPAL_CONSUMER_SECRET?.trim(),
     },
     { headers: { Accept: 'application/json', 'Content-Type': 'application/json' } }
   );
@@ -37,6 +37,10 @@ async function authHeaders() {
 }
 
 async function getOrRegisterIPN(ipnUrl) {
+  // If the IPN was pre-registered via Pesapal's dashboard, use it directly
+  const presetId = process.env.PESAPAL_IPN_ID?.trim();
+  if (presetId) return presetId;
+
   const headers = await authHeaders();
 
   try {

@@ -94,7 +94,7 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
           amount: amountDue,
           currency: 'KES',
           description: `Magena Pilates — ${product_name} (${order_type})`,
-          callbackUrl: `${process.env.FRONTEND_URL}/order-success?trackingId=${order.id}`,
+          callbackUrl: `${process.env.FRONTEND_URL}/order-success`,
           cancellationUrl: `${process.env.FRONTEND_URL}/order-cancelled`,
           ipnId,
           billingAddress: {

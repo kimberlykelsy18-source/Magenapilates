@@ -20,7 +20,8 @@ interface Order {
 
 export function OrderSuccess() {
   const [params] = useSearchParams();
-  const trackingId = params.get('trackingId');
+  // Pesapal appends OrderTrackingId to the callback URL automatically after payment
+  const trackingId = params.get('OrderTrackingId');
 
   const [status, setStatus] = useState<'loading' | 'completed' | 'failed' | 'pending' | 'error'>('loading');
   const [order, setOrder] = useState<Order | null>(null);
