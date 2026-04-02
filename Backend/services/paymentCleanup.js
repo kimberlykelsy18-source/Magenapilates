@@ -33,10 +33,10 @@ async function runCleanup() {
   if (orderIds.length > 0) {
     await db
       .from('pre_orders')
-      .update({ status: 'cancelled' })
+      .update({ status: 'failed' })
       .in('id', orderIds);
 
-    console.log(`[PaymentCleanup] Cancelled ${orderIds.length} order(s)`);
+    console.log(`[PaymentCleanup] Marked ${orderIds.length} order(s) as failed`);
   }
 }
 

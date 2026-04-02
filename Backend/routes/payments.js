@@ -176,7 +176,7 @@ async function handlePesapalPayment(orderTrackingId, db, transporter) {
       status: 'failed',
       failure_reason: txStatus.payment_status_description || 'Payment failed',
     }).eq('id', payment.id);
-    await db.from('pre_orders').update({ status: 'cancelled' }).eq('id', payment.order_id);
+    await db.from('pre_orders').update({ status: 'failed' }).eq('id', payment.order_id);
     return { status: 'failed' };
 
   } else if (statusCode === 3) {

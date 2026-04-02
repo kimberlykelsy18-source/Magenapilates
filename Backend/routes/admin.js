@@ -84,14 +84,22 @@ module.exports = ({ serviceSupabase }) => {
     const { id } = req.params;
     const { status, notes } = req.body;
 
-    const allowed = ['pending_payment', 'confirmed', 'completed', 'cancelled'];
+    const { shipping_status } = req.body;
+
+    const allowed = ['pending_payment', 'confirmed', 'failed'];
     if (status && !allowed.includes(status)) {
       return res.status(400).json({ error: 'Invalid status value' });
+    }
+
+    const allowedShipping = ['pending', 'completed'];
+    if (shipping_status && !allowedShipping.includes(shipping_status)) {
+      return res.status(400).json({ error: 'Invalid shipping_status value' });
     }
 
     const update = {};
     if (status) update.status = status;
     if (notes !== undefined) update.notes = notes;
+    if (shipping_status) update.shipping_status = shipping_status;
 
     const { data, error } = await serviceSupabase
       .from('pre_orders')

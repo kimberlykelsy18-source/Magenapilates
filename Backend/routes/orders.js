@@ -128,7 +128,7 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
         // Cancel the order if Pesapal fails
         await serviceSupabase
           .from('pre_orders')
-          .update({ status: 'cancelled' })
+          .update({ status: 'failed' })
           .eq('id', order.id);
         return res.status(502).json({ error: 'Payment gateway error. Please try again.' });
       }

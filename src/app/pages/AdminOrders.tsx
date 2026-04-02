@@ -26,6 +26,7 @@ interface Order {
   deposit_amount: number;
   payment_method: string;
   status: string;
+  shipping_status: string;
   created_at: string;
   pesapal_tracking_id?: string | null;
   payment_reference?: string | null;
@@ -43,10 +44,15 @@ function getStatusColor(status: string) {
   switch (status) {
     case 'pending_payment': return 'bg-yellow-100 text-yellow-800';
     case 'confirmed': return 'bg-blue-100 text-blue-800';
-    case 'completed': return 'bg-green-100 text-green-800';
-    case 'cancelled': return 'bg-red-100 text-red-800';
+    case 'failed': return 'bg-red-100 text-red-800';
     default: return 'bg-gray-100 text-gray-800';
   }
+}
+
+function getShippingColor(shipping: string) {
+  return shipping === 'completed'
+    ? 'bg-green-100 text-green-800'
+    : 'bg-orange-100 text-orange-800';
 }
 
 export function AdminOrders() {
@@ -92,6 +98,21 @@ export function AdminOrders() {
       toast.success('Order status updated');
     } catch (err: any) {
       toast.error(err.message || 'Failed to update status');
+    }
+  };
+
+  const handleShippingChange = async (orderId: string, shipping_status: string) => {
+    try {
+      const res = await fetch(`${API}/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: adminHeaders(),
+        body: JSON.stringify({ shipping_status }),
+      });
+      if (!res.ok) throw new Error('Failed to update shipping');
+      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, shipping_status } : o));
+      toast.success('Shipping status updated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update shipping');
     }
   };
 
@@ -149,6 +170,7 @@ export function AdminOrders() {
     <div class="row"><span class="label">Order ID</span><span class="val">${shortId}</span></div>
     <div class="row"><span class="label">Date</span><span class="val">${new Date(order.created_at).toLocaleString()}</span></div>
     <div class="row"><span class="label">Status</span><span class="val"><span class="status-badge">${statusLabel}</span></span></div>
+    <div class="row"><span class="label">Shipping</span><span class="val">${order.shipping_status === 'completed' ? 'Shipped' : 'Pending'}</span></div>
     <div class="row"><span class="label">Product</span><span class="val">${order.product_name}</span></div>
     <div class="row"><span class="label">Order Type</span><span class="val" style="text-transform:capitalize">${order.order_type}</span></div>
     <div class="row"><span class="label">Quantity</span><span class="val">${order.quantity}</span></div>
@@ -210,8 +232,7 @@ export function AdminOrders() {
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="pending_payment">Pending Payment</SelectItem>
               <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" size="sm" onClick={() => loadOrders(statusFilter)}>
@@ -236,6 +257,7 @@ export function AdminOrders() {
                 <TableHead>Payment</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Shipping</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -283,8 +305,23 @@ export function AdminOrders() {
                       <SelectContent>
                         <SelectItem value="pending_payment">Pending Payment</SelectItem>
                         <SelectItem value="confirmed">Confirmed</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={order.shipping_status || 'pending'}
+                      onValueChange={(value) => handleShippingChange(order.id, value)}
+                    >
+                      <SelectTrigger className="w-32">
+                        <span className={`text-xs px-2 py-1 rounded ${getShippingColor(order.shipping_status || 'pending')}`}>
+                          {order.shipping_status === 'completed' ? 'Shipped' : 'Pending'}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="completed">Shipped</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -310,13 +347,13 @@ export function AdminOrders() {
       )}
 
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Order Details — {selectedOrder && toShortId(selectedOrder.order_number)}</DialogTitle>
             <DialogDescription>Full details for this pre-order.</DialogDescription>
           </DialogHeader>
           {selectedOrder && (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 text-sm overflow-y-auto flex-1">
               <div className="grid grid-cols-2 gap-2">
                 <Label>Order Date:</Label>
                 <span>{new Date(selectedOrder.created_at).toLocaleString()}</span>
@@ -353,6 +390,12 @@ export function AdminOrders() {
                   <span className="font-mono font-medium">{selectedOrder.payment_reference}</span>
                 </div>
               )}
+              <div className="grid grid-cols-2 gap-2">
+                <Label>Shipping:</Label>
+                <span className={`text-xs px-2 py-1 rounded w-fit ${getShippingColor(selectedOrder.shipping_status || 'pending')}`}>
+                  {selectedOrder.shipping_status === 'completed' ? 'Shipped' : 'Pending'}
+                </span>
+              </div>
               <div className="border-t pt-3 grid grid-cols-2 gap-2">
                 <Label>Customer Name:</Label>
                 <span>{selectedOrder.customer_name}</span>

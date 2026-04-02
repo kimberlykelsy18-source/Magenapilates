@@ -223,15 +223,15 @@ export function AdminProducts() {
       </div>
 
       <Dialog open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{editingProduct ? 'Edit Product' : 'Add Product'}</DialogTitle>
             <DialogDescription>
               {editingProduct ? 'Edit the product details.' : 'Add a new Pilates product.'}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 pr-1">
             <div>
               <Label htmlFor="name">Product Name *</Label>
               <Input
@@ -280,7 +280,7 @@ export function AdminProducts() {
               </div>
               {imagePreview && (
                 <div className="border rounded p-2 mt-2">
-                  <img src={imagePreview} alt="Preview" className="w-full h-40 object-cover rounded" />
+                  <img src={imagePreview} alt="Preview" className="w-full h-28 object-cover rounded" />
                 </div>
               )}
             </div>
