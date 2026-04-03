@@ -82,7 +82,7 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
 
     // Both card and M-PESA go through Pesapal's hosted checkout.
     // Pesapal's checkout page handles card entry and M-PESA paybill display automatically.
-    if (payment_method === 'card' || payment_method === 'mpesa') {
+    if (payment_method === 'card') {
       try {
         const ipnUrl = `${process.env.BACKEND_URL}/pesapal/ipn`;
         const ipnId = await pesapal.getOrRegisterIPN(ipnUrl);
@@ -97,6 +97,7 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
           callbackUrl: `${process.env.FRONTEND_URL}/order-success`,
           cancellationUrl: `${process.env.FRONTEND_URL}/order-cancelled`,
           ipnId,
+          paymentMethodType: 'CARD',
           billingAddress: {
             email_address: customer_email,
             phone_number: customer_phone,

@@ -74,22 +74,29 @@ async function submitOrder({
   cancellationUrl,
   ipnId,
   billingAddress,
+  paymentMethodType, // e.g. 'CARD' or 'MOBILE_MONEY' to skip method selection
 }) {
   const headers = await authHeaders();
 
+  const body = {
+    id: merchantReference,
+    currency,
+    amount,
+    description: String(description).slice(0, 100), // Pesapal max 100 chars
+    callback_url: callbackUrl,
+    cancellation_url: cancellationUrl,
+    notification_id: ipnId,
+    branch: 'Magena Pilates - Nairobi',
+    billing_address: billingAddress,
+  };
+
+  if (paymentMethodType) {
+    body.payment_method_type = paymentMethodType;
+  }
+
   const { data } = await axios.post(
     `${BASE_URL}/api/Transactions/SubmitOrderRequest`,
-    {
-      id: merchantReference,
-      currency,
-      amount,
-      description: String(description).slice(0, 100), // Pesapal max 100 chars
-      callback_url: callbackUrl,
-      cancellation_url: cancellationUrl,
-      notification_id: ipnId,
-      branch: 'Magena Pilates - Nairobi',
-      billing_address: billingAddress,
-    },
+    body,
     { headers }
   );
 
