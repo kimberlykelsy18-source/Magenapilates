@@ -18,9 +18,7 @@ export function CheckoutFlow({ order, totalAmount, currency, onCancel }: Checkou
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
 
-  // Both card and M-PESA go through Pesapal's hosted checkout.
-  // Pesapal handles card entry and M-PESA paybill/payment on their secure page.
-  const handlePesapalCheckout = async () => {
+  const handleFlutterwaveCheckout = async () => {
     setProcessing(true);
     setError('');
 
@@ -47,7 +45,7 @@ export function CheckoutFlow({ order, totalAmount, currency, onCancel }: Checkou
 
       if (!ok) throw new Error(data?.error || 'Failed to create order');
 
-      // Redirect to Pesapal hosted checkout (handles both card and M-PESA)
+      // Redirect to Flutterwave hosted checkout
       window.location.href = data.redirect_url;
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please try again.');
@@ -56,16 +54,20 @@ export function CheckoutFlow({ order, totalAmount, currency, onCancel }: Checkou
   };
 
   const isMpesa = order.paymentMethod === 'mpesa';
+  const isRental = order.orderType === 'rental';
 
   return (
     <div className="space-y-6">
       <div className="text-center pb-4 border-b">
         <h3 className="text-xl mb-2">
-          {isMpesa ? 'M-PESA Payment via Pesapal' : 'Card Payment via Pesapal'}
+          {isMpesa ? 'M-PESA Payment' : isRental ? 'Monthly Rental — Card Payment' : 'Card Payment'}
         </h3>
         <p className="text-2xl font-medium text-[#3D3530]">
           KES {totalAmount.toLocaleString()}
         </p>
+        {isRental && !isMpesa && (
+          <p className="text-xs text-gray-500 mt-1">First payment (deposit + 1st month). Subsequent months auto-charged.</p>
+        )}
       </div>
 
       <div className={`flex items-center gap-3 p-4 rounded border ${isMpesa ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
@@ -78,12 +80,17 @@ export function CheckoutFlow({ order, totalAmount, currency, onCancel }: Checkou
           {isMpesa ? (
             <>
               <h4 className="font-medium text-green-900">Pay via M-PESA</h4>
-              <p className="text-sm text-green-700">You'll be redirected to Pesapal where you can pay using M-PESA</p>
+              <p className="text-sm text-green-700">Pay to our M-PESA paybill after submitting. We'll confirm your order manually.</p>
+            </>
+          ) : isRental ? (
+            <>
+              <h4 className="font-medium text-blue-900">Secure Card Payment + Auto-Subscription</h4>
+              <p className="text-sm text-blue-700">Pay now and your card is enrolled for monthly billing — processed by Flutterwave.</p>
             </>
           ) : (
             <>
               <h4 className="font-medium text-blue-900">Secure Card Payment</h4>
-              <p className="text-sm text-blue-700">Visa, Mastercard — processed by Pesapal</p>
+              <p className="text-sm text-blue-700">Visa, Mastercard — processed securely by Flutterwave.</p>
             </>
           )}
         </div>
@@ -99,46 +106,76 @@ export function CheckoutFlow({ order, totalAmount, currency, onCancel }: Checkou
           <span>{order.customerPhone}</span>
         </div>
         <div className="flex justify-between border-t pt-2">
-          <span className="text-gray-600">Total to Pay</span>
+          <span className="text-gray-600">Total to Pay Now</span>
           <span className="font-medium text-lg">KES {totalAmount.toLocaleString()}</span>
         </div>
       </div>
 
-      <div className={`border p-3 text-xs rounded ${isMpesa ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-        You'll be redirected to Pesapal's secure checkout. {isMpesa ? 'Select M-PESA and follow the prompts to complete payment.' : 'Enter your card details to complete payment.'} You'll return here once done.
-      </div>
+      {!isMpesa && (
+        <div className="border p-3 text-xs rounded bg-blue-50 border-blue-200 text-blue-800">
+          You'll be redirected to Flutterwave's secure checkout. Enter your card details to complete payment. You'll return here once done.
+        </div>
+      )}
+
+      {isMpesa && (
+        <div className="border p-3 text-xs rounded bg-green-50 border-green-200 text-green-800">
+          After submitting, please pay to our M-PESA paybill using your order ID as the account number. We will confirm your order within 24 hours.
+        </div>
+      )}
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
 
       <div className="flex gap-3">
-        <Button
-          onClick={handlePesapalCheckout}
-          disabled={processing}
-          className={`flex-1 text-white py-6 ${isMpesa ? 'bg-green-600 hover:bg-green-700' : 'bg-[#3D3530] hover:bg-[#2D2520]'}`}
-        >
-          {processing ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Redirecting to Pesapal...
-            </>
-          ) : (
-            <>
-              <ExternalLink className="h-4 w-4 mr-2" />
-              {isMpesa ? 'Pay with M-PESA' : 'Pay with Card'}
-            </>
-          )}
-        </Button>
+        {!isMpesa ? (
+          <Button
+            onClick={handleFlutterwaveCheckout}
+            disabled={processing}
+            className="flex-1 text-white py-6 bg-[#3D3530] hover:bg-[#2D2520]"
+          >
+            {processing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Redirecting to Flutterwave...
+              </>
+            ) : (
+              <>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Pay with Card
+              </>
+            )}
+          </Button>
+        ) : (
+          <Button
+            onClick={handleFlutterwaveCheckout}
+            disabled={processing}
+            className="flex-1 text-white py-6 bg-green-600 hover:bg-green-700"
+          >
+            {processing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Placing Order...
+              </>
+            ) : (
+              <>
+                <Smartphone className="h-4 w-4 mr-2" />
+                Place M-PESA Order
+              </>
+            )}
+          </Button>
+        )}
         <Button onClick={onCancel} variant="outline" disabled={processing} className="px-6">
           Cancel
         </Button>
       </div>
 
-      <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-        </svg>
-        <span>Secured by Pesapal — your payment info is safe</span>
-      </div>
+      {!isMpesa && (
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+          </svg>
+          <span>Secured by Flutterwave — your payment info is safe</span>
+        </div>
+      )}
     </div>
   );
 }

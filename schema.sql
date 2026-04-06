@@ -43,14 +43,18 @@ CREATE TABLE IF NOT EXISTS pre_orders (
 CREATE TABLE IF NOT EXISTS payments (
   id                   UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   order_id             UUID REFERENCES pre_orders(id) ON DELETE CASCADE,
-  checkout_request_id  TEXT,              -- PesaPal OrderTrackingId / M-Pesa CheckoutRequestID
+  checkout_request_id  TEXT,              -- Flutterwave tx_ref / M-Pesa CheckoutRequestID
   amount               NUMERIC(10,2) NOT NULL,
   payment_method       TEXT DEFAULT 'card',
-  payment_reference    TEXT,              -- PesaPal confirmation code or M-Pesa receipt
+  payment_reference    TEXT,              -- Flutterwave flw_ref or M-Pesa receipt
   status               TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
   failure_reason       TEXT,
+  flw_plan_id          TEXT,              -- Flutterwave payment plan ID (rental subscriptions only)
   created_at           TIMESTAMPTZ DEFAULT now()
 );
+
+-- Migration: add flw_plan_id if upgrading an existing database
+-- ALTER TABLE payments ADD COLUMN IF NOT EXISTS flw_plan_id TEXT;
 
 -- SITE SETTINGS (single row, id=1)
 CREATE TABLE IF NOT EXISTS site_settings (

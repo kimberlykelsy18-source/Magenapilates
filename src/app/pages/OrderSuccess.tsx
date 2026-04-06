@@ -20,17 +20,26 @@ interface Order {
 
 export function OrderSuccess() {
   const [params] = useSearchParams();
-  // Pesapal appends OrderTrackingId to the callback URL automatically after payment
-  const trackingId = params.get('OrderTrackingId');
+  // Flutterwave appends transaction_id, tx_ref, and status to the redirect URL
+  const transactionId = params.get('transaction_id');
+  const txRef = params.get('tx_ref');
+  const flwStatus = params.get('status');
 
   const [status, setStatus] = useState<'loading' | 'completed' | 'failed' | 'pending' | 'error'>('loading');
   const [order, setOrder] = useState<Order | null>(null);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
+  const [isSubscription, setIsSubscription] = useState(false);
 
   useEffect(() => {
-    if (!trackingId) {
+    if (!txRef) {
       setStatus('error');
+      return;
+    }
+
+    // If Flutterwave explicitly says cancelled/failed, show immediately
+    if (flwStatus === 'cancelled' || flwStatus === 'failed') {
+      setStatus('failed');
       return;
     }
 
@@ -38,15 +47,21 @@ export function OrderSuccess() {
 
     async function poll() {
       try {
-        const { data } = await apiFetch(`${API}/api/pesapal/status/${trackingId}`);
+        const queryParams = new URLSearchParams();
+        if (transactionId) queryParams.set('transaction_id', transactionId);
+        queryParams.set('tx_ref', txRef!);
+        if (flwStatus) queryParams.set('status', flwStatus);
+
+        const { data } = await apiFetch(`${API}/api/flutterwave/status?${queryParams}`);
 
         if (cancelled) return;
 
         if (data.status === 'completed') {
           setOrder(data.order);
           setPaymentReference(data.payment_reference || null);
+          setIsSubscription(data.order?.order_type === 'rental');
           setStatus('completed');
-        } else if (data.status === 'failed' || data.status === 'reversed') {
+        } else if (data.status === 'failed') {
           setStatus('failed');
         } else {
           // Still pending — retry up to 10 times (every 3 seconds)
@@ -68,7 +83,7 @@ export function OrderSuccess() {
     poll();
 
     return () => { cancelled = true; };
-  }, [trackingId]);
+  }, [txRef, transactionId, flwStatus]);
 
   if (status === 'loading') {
     return (
@@ -109,6 +124,16 @@ export function OrderSuccess() {
               <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
               <p className="text-green-800 text-sm font-medium">Payment verified and order confirmed</p>
             </div>
+
+            {isSubscription && (
+              <div className="flex items-start gap-2 mb-4 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                <p className="text-blue-800 text-sm">
+                  <strong>Subscription active.</strong> Your card will be charged monthly automatically. No further action needed.
+                </p>
+              </div>
+            )}
+
             <p className="text-gray-600 mb-6 text-sm">
               Hi <strong>{order.customer_name}</strong>! Your pre-order is confirmed and a receipt has been sent to <strong>{order.customer_email}</strong>.
             </p>
@@ -124,7 +149,7 @@ export function OrderSuccess() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Type</span>
-                <span className="capitalize">{order.order_type}</span>
+                <span className="capitalize">{order.order_type === 'rental' ? 'Monthly Rental' : 'Purchase'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Quantity</span>
@@ -134,10 +159,10 @@ export function OrderSuccess() {
                 <span className="text-gray-500">Amount Paid</span>
                 <span className="font-medium text-green-700">KES {amountPaid}</span>
               </div>
-              {trackingId && (
+              {transactionId && (
                 <div className="flex justify-between border-t pt-2">
                   <span className="text-gray-500">Transaction ID</span>
-                  <span className="font-mono text-xs text-gray-600 break-all text-right max-w-[180px]">{trackingId}</span>
+                  <span className="font-mono text-xs text-gray-600 break-all text-right max-w-[180px]">{transactionId}</span>
                 </div>
               )}
               {paymentReference && (
@@ -196,9 +221,9 @@ export function OrderSuccess() {
         <Loader2 className="h-12 w-12 text-[#3D3530] mx-auto mb-4" />
         <h2 className="text-xl text-[#3D3530] mb-2">Payment Pending</h2>
         <p className="text-gray-600 text-sm mb-6">
-          We're still waiting for payment confirmation from Pesapal. Check your email — if payment went through you'll receive a confirmation shortly.
+          We're still waiting for payment confirmation from Flutterwave. Check your email — if payment went through you'll receive a confirmation shortly.
         </p>
-        <p className="text-xs text-gray-400 mb-6">Tracking ID: {trackingId}</p>
+        {txRef && <p className="text-xs text-gray-400 mb-6">Reference: {txRef}</p>}
         <Link
           to="/"
           className="block w-full bg-[#3D3530] text-white py-3 text-sm tracking-wider hover:bg-[#2D2520] transition-colors"

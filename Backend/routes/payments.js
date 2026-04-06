@@ -1,9 +1,6 @@
 const express = require('express');
-const pesapal = require('../services/pesapal');
+const flutterwave = require('../services/flutterwave');
 const { createServiceClient } = require('../config/supabase');
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isValidUUID = (id) => UUID_RE.test(id);
 
 function toShortOrderId(n) {
   if (!n) return 'PRE-???';
@@ -17,82 +14,103 @@ module.exports = ({ transporter }) => {
   const router = express.Router();
   const db = createServiceClient();
 
-  // PesaPal IPN — PesaPal calls this GET when payment status changes
-  router.get('/pesapal/ipn', async (req, res) => {
-    const { OrderTrackingId, OrderMerchantReference, OrderNotificationType } = req.query;
-    console.log('[PesaPal IPN]', req.query);
+  // ── Flutterwave Webhook ────────────────────────────────────────────────────
+  // Flutterwave POSTs here for every charge event (one-time and subscription).
+  // Register this URL in Flutterwave Dashboard > Settings > Webhooks.
+  // Set the "Secret Hash" in the dashboard to match FLW_WEBHOOK_HASH in .env.
+  router.post('/flutterwave/webhook', express.json(), async (req, res) => {
+    // Verify webhook authenticity — Flutterwave sends the hash in verif-hash header
+    const secretHash = process.env.FLW_WEBHOOK_HASH?.trim();
+    const signature = req.headers['verif-hash'];
 
-    // Pesapal requires us to echo back the notification to acknowledge receipt
-    const ipnAck = {
-      orderNotificationType: OrderNotificationType || 'IPNCHANGE',
-      orderTrackingId: OrderTrackingId || '',
-      orderMerchantReference: OrderMerchantReference || '',
-      status: 200,
-    };
-
-    if (!OrderTrackingId || !isValidUUID(OrderTrackingId)) {
-      return res.json(ipnAck);
+    if (!secretHash || signature !== secretHash) {
+      console.warn('[FLW Webhook] Invalid signature — ignoring');
+      return res.status(401).send('Unauthorized');
     }
 
-    // Only process known tracking IDs
-    const { data: known } = await db
-      .from('payments')
-      .select('id')
-      .eq('checkout_request_id', OrderTrackingId)
-      .maybeSingle();
+    const event = req.body;
+    console.log('[FLW Webhook] Event:', event?.event, '| tx_ref:', event?.data?.tx_ref);
 
-    if (!known) {
-      console.warn('[PesaPal IPN] Unknown OrderTrackingId:', OrderTrackingId);
-      return res.json(ipnAck);
-    }
+    // Acknowledge immediately so Flutterwave doesn't retry
+    res.status(200).send('OK');
 
     try {
-      await handlePesapalPayment(OrderTrackingId, db, transporter);
-    } catch (err) {
-      console.error('[PesaPal IPN] Handler error:', err.message);
-    }
+      const eventType = event?.event;
 
-    res.json(ipnAck);
+      if (eventType === 'charge.completed') {
+        // Handles both:
+        //   - First payment (our tx_ref = mgn-{orderId}): confirm order, send email
+        //   - Recurring subscription charge (auto-generated tx_ref): log + notify admin
+        await handleChargeCompleted(event.data, db, transporter);
+      } else if (
+        eventType === 'subscription.cancelled' ||
+        eventType === 'subscription.suspended'
+      ) {
+        await handleSubscriptionEvent(event, db, transporter);
+      } else {
+        console.log('[FLW Webhook] Unhandled event type:', eventType);
+      }
+    } catch (err) {
+      console.error('[FLW Webhook] Handler error:', err.message);
+    }
   });
 
-  // Frontend polls this after PesaPal redirect back
-  router.get('/api/pesapal/status/:orderTrackingId', async (req, res) => {
-    const { orderTrackingId } = req.params;
+  // ── Frontend status poll — called after Flutterwave redirect ──────────────
+  // Flutterwave redirects to /order-success?transaction_id=XXX&tx_ref=mgn-{uuid}&status=successful
+  router.get('/api/flutterwave/status', async (req, res) => {
+    const { transaction_id, tx_ref, status: flwStatus } = req.query;
 
-    if (!isValidUUID(orderTrackingId)) {
-      return res.status(400).json({ error: 'Invalid tracking ID format' });
+    if (!tx_ref) {
+      return res.status(400).json({ error: 'Missing tx_ref' });
     }
 
     try {
-      const { data: existing } = await db
+      // Check our DB first — webhook may have already processed it
+      const { data: payment } = await db
         .from('payments')
-        .select('status, order_id, payment_reference')
-        .eq('checkout_request_id', orderTrackingId)
+        .select('id, order_id, status, payment_reference, flw_plan_id')
+        .eq('checkout_request_id', tx_ref)
         .maybeSingle();
 
-      if (!existing) return res.status(404).json({ error: 'Payment not found' });
+      if (!payment) return res.status(404).json({ error: 'Payment record not found' });
 
-      if (existing.status === 'paid') {
-        // Fetch full order for the success page
+      if (payment.status === 'paid') {
         const { data: order } = await db
           .from('pre_orders')
           .select('id, order_number, product_name, order_type, quantity, total_amount, deposit_amount, customer_name, customer_email, status')
-          .eq('id', existing.order_id)
+          .eq('id', payment.order_id)
           .single();
 
         return res.json({
           status: 'completed',
-          order_id: existing.order_id,
-          pesapal_tracking_id: orderTrackingId,
-          payment_reference: existing.payment_reference,
+          order_id: payment.order_id,
+          transaction_id,
+          tx_ref,
+          payment_reference: payment.payment_reference,
           order: order ? { ...order, short_id: toShortOrderId(order.order_number) } : null,
         });
       }
 
-      const result = await handlePesapalPayment(orderTrackingId, db, transporter);
-      return res.json(result);
+      // Not yet confirmed — verify directly with Flutterwave if we have a transaction_id
+      if (transaction_id && flwStatus === 'successful') {
+        const result = await handleChargeCompleted(
+          { id: transaction_id, tx_ref },
+          db,
+          transporter
+        );
+        return res.json(result);
+      }
+
+      // Payment still pending (or cancelled/failed redirect)
+      if (flwStatus === 'cancelled' || flwStatus === 'failed') {
+        await db.from('payments').update({ status: 'failed', failure_reason: `Customer ${flwStatus}` }).eq('id', payment.id);
+        await db.from('pre_orders').update({ status: 'cancelled' }).eq('id', payment.order_id);
+        return res.json({ status: 'failed' });
+      }
+
+      return res.json({ status: 'pending' });
     } catch (err) {
-      console.error('[PesaPal status]', err.message);
+      console.error('[FLW status]', err.message);
       return res.status(500).json({ error: err.message });
     }
   });
@@ -100,96 +118,217 @@ module.exports = ({ transporter }) => {
   return router;
 };
 
-async function handlePesapalPayment(orderTrackingId, db, transporter) {
-  const txStatus = await pesapal.getTransactionStatus(orderTrackingId);
-  const statusCode = txStatus.status_code;
+// ── Shared handlers ───────────────────────────────────────────────────────────
 
-  const { data: payment } = await db
-    .from('payments')
-    .select('id, order_id, status')
-    .eq('checkout_request_id', orderTrackingId)
-    .maybeSingle();
+async function handleChargeCompleted(txData, db, transporter) {
+  const transactionId = txData.id;
+  const txRef = txData.tx_ref;
+  const customerEmail = txData.customer?.email;
 
-  if (!payment) return { status: 'not_found' };
-  if (payment.status === 'paid') {
-    const { data: order } = await db
-      .from('pre_orders')
-      .select('id, order_number, product_name, order_type, total_amount, customer_name')
-      .eq('id', payment.order_id)
-      .single();
-    return {
-      status: 'completed',
-      order_id: payment.order_id,
-      order: order ? { ...order, short_id: toShortOrderId(order.order_number) } : null,
-    };
+  if (!txRef) return { status: 'invalid' };
+
+  // Verify with Flutterwave (uses v4)
+  let tx;
+  try {
+    tx = await flutterwave.verifyTransaction(transactionId);
+  } catch (err) {
+    console.error('[FLW] verifyTransaction failed:', err.message);
+    return { status: 'pending' };
   }
 
-  if (statusCode === 1) {
-    // COMPLETED
+  // ── Try to find our payment record by tx_ref (first / one-time payment) ────
+  const { data: payment } = await db
+    .from('payments')
+    .select('id, order_id, status, amount, flw_plan_id')
+    .eq('checkout_request_id', txRef)
+    .maybeSingle();
+
+  if (payment) {
+    // ── FIRST PAYMENT (purchase or first rental month) ────────────────────
+    if (payment.status === 'paid') {
+      const { data: order } = await db
+        .from('pre_orders')
+        .select('id, order_number, product_name, order_type, total_amount, deposit_amount, customer_name, customer_email, status')
+        .eq('id', payment.order_id)
+        .single();
+      return {
+        status: 'completed',
+        order_id: payment.order_id,
+        order: order ? { ...order, short_id: toShortOrderId(order.order_number) } : null,
+      };
+    }
+
+    if (tx.status !== 'successful') {
+      if (tx.status === 'failed') {
+        await db.from('payments').update({ status: 'failed', failure_reason: tx.processor_response || 'Payment failed' }).eq('id', payment.id);
+        await db.from('pre_orders').update({ status: 'cancelled' }).eq('id', payment.order_id);
+        return { status: 'failed' };
+      }
+      return { status: 'pending' };
+    }
+
     await db.from('payments').update({
       status: 'paid',
-      payment_reference: txStatus.confirmation_code || null,
+      payment_reference: tx.flw_ref || tx.id?.toString() || null,
     }).eq('id', payment.id);
 
-    const { data: order } = await db
-      .from('pre_orders')
-      .select('*')
-      .eq('id', payment.order_id)
-      .single();
-
+    const { data: order } = await db.from('pre_orders').select('*').eq('id', payment.order_id).single();
     await db.from('pre_orders').update({ status: 'confirmed' }).eq('id', payment.order_id);
 
     const shortId = toShortOrderId(order?.order_number);
-    const amountPaid = txStatus.amount || order?.total_amount + (order?.deposit_amount || 0);
+    const amountPaid = tx.amount || payment.amount;
+    const isRental = order?.order_type === 'rental';
 
-    // Confirmation email to customer
     if (order?.customer_email) {
       transporter.sendMail({
         from: `"Magena Pilates" <${process.env.GMAIL_EMAIL}>`,
         to: order.customer_email,
         subject: `Order Confirmed — ${shortId} · Magena Pilates`,
-        html: buildConfirmationEmail({ order, shortId, amountPaid, paymentMethod: txStatus.payment_method || 'Card', reference: txStatus.confirmation_code }),
-      }).catch((err) => console.error('[PesaPal email] Customer:', err.message));
+        html: buildConfirmationEmail({ order, shortId, amountPaid, paymentMethod: tx.payment_type || 'Card', reference: tx.flw_ref || null, isRental, planId: payment.flw_plan_id }),
+      }).catch((err) => console.error('[FLW email] Customer:', err.message));
     }
 
-    // Notification email to admin
     if (process.env.ADMIN_EMAIL) {
       transporter.sendMail({
         from: `"Magena Pilates" <${process.env.GMAIL_EMAIL}>`,
         to: process.env.ADMIN_EMAIL,
         subject: `New Confirmed Pre-Order — ${shortId}`,
-        html: buildAdminNotificationEmail({ order, shortId, amountPaid }),
-      }).catch((err) => console.error('[PesaPal email] Admin:', err.message));
+        html: buildAdminNotificationEmail({ order, shortId, amountPaid, isRental, planId: payment.flw_plan_id }),
+      }).catch((err) => console.error('[FLW email] Admin:', err.message));
     }
 
     return {
       status: 'completed',
       order_id: payment.order_id,
-      pesapal_tracking_id: orderTrackingId,
-      payment_reference: txStatus.confirmation_code || null,
+      transaction_id: tx.id,
+      tx_ref: txRef,
+      payment_reference: tx.flw_ref || null,
       order: { ...order, short_id: shortId, status: 'confirmed' },
     };
-
-  } else if (statusCode === 2) {
-    // FAILED
-    await db.from('payments').update({
-      status: 'failed',
-      failure_reason: txStatus.payment_status_description || 'Payment failed',
-    }).eq('id', payment.id);
-    await db.from('pre_orders').update({ status: 'failed' }).eq('id', payment.order_id);
-    return { status: 'failed' };
-
-  } else if (statusCode === 3) {
-    // REVERSED
-    await db.from('payments').update({ status: 'failed', failure_reason: 'Payment reversed' }).eq('id', payment.id);
-    return { status: 'reversed' };
   }
 
-  return { status: 'pending' };
+  // ── RECURRING SUBSCRIPTION CHARGE (months 2–5, auto-generated tx_ref) ────
+  // Flutterwave generates a new tx_ref per recurring charge; match by customer email + plan.
+  if (!customerEmail) {
+    console.warn('[FLW] Recurring charge with no customer email, tx_ref:', txRef);
+    return { status: 'not_found' };
+  }
+
+  // Find active subscription payment for this customer (has a flw_plan_id)
+  const { data: subPayment } = await db
+    .from('payments')
+    .select('id, order_id, flw_plan_id')
+    .not('flw_plan_id', 'is', null)
+    .eq('status', 'paid')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    // Match by customer email via the related pre_order
+    .maybeSingle();
+
+  // Cross-check email via the order
+  let matchedPayment = null;
+  if (subPayment) {
+    const { data: relOrder } = await db
+      .from('pre_orders')
+      .select('customer_email')
+      .eq('id', subPayment.order_id)
+      .single();
+    if (relOrder?.customer_email === customerEmail) {
+      matchedPayment = subPayment;
+    }
+  }
+
+  if (!matchedPayment) {
+    // Fallback: find via order email directly
+    const { data: orderByEmail } = await db
+      .from('pre_orders')
+      .select('id')
+      .eq('customer_email', customerEmail)
+      .eq('order_type', 'rental')
+      .eq('status', 'confirmed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (orderByEmail) {
+      const { data: p } = await db
+        .from('payments')
+        .select('id, order_id, flw_plan_id')
+        .eq('order_id', orderByEmail.id)
+        .not('flw_plan_id', 'is', null)
+        .maybeSingle();
+      matchedPayment = p;
+    }
+  }
+
+  const chargeStatus = tx.status === 'successful' ? 'paid' : 'failed';
+  console.log(`[FLW Recurring] ${chargeStatus} charge for ${customerEmail} | flw_ref: ${tx.flw_ref} | amount: ${tx.amount}`);
+
+  // Notify admin of every recurring charge (success or failure)
+  if (process.env.ADMIN_EMAIL) {
+    const orderInfo = matchedPayment
+      ? await db.from('pre_orders').select('order_number, product_name, customer_name').eq('id', matchedPayment.order_id).single().then((r) => r.data)
+      : null;
+    const shortId = orderInfo ? toShortOrderId(orderInfo.order_number) : 'unknown';
+
+    transporter.sendMail({
+      from: `"Magena Pilates" <${process.env.GMAIL_EMAIL}>`,
+      to: process.env.ADMIN_EMAIL,
+      subject: `Rental Subscription ${chargeStatus === 'paid' ? 'Payment Received' : 'PAYMENT FAILED'} — ${shortId}`,
+      html: buildRecurringChargeEmail({ customerEmail, customerName: orderInfo?.customer_name, shortId, amount: tx.amount, currency: tx.currency, flwRef: tx.flw_ref, chargeStatus }),
+    }).catch((err) => console.error('[FLW email] Recurring admin:', err.message));
+  }
+
+  return { status: chargeStatus === 'paid' ? 'completed' : 'failed' };
 }
 
-function buildConfirmationEmail({ order, shortId, amountPaid, paymentMethod, reference }) {
-  const typeLabel = order.order_type === 'purchase' ? 'Purchase' : 'Monthly Rental';
+async function handleSubscriptionEvent(event, db, transporter) {
+  const planId = event?.data?.plan?.id?.toString();
+  const customerEmail = event?.data?.customer?.email;
+
+  console.log('[FLW Subscription]', event.event, '| plan_id:', planId, '| email:', customerEmail);
+
+  if (!planId) return;
+
+  const { data: payment } = await db
+    .from('payments')
+    .select('id, order_id')
+    .eq('flw_plan_id', planId)
+    .maybeSingle();
+
+  if (!payment) {
+    console.warn('[FLW Subscription] No payment record for plan_id:', planId);
+    return;
+  }
+
+  if (event.event === 'subscription.cancelled') {
+    await db.from('payments').update({ failure_reason: 'Subscription cancelled by Flutterwave' }).eq('id', payment.id);
+
+    const { data: order } = await db.from('pre_orders').select('order_number, customer_name, product_name').eq('id', payment.order_id).single();
+    const shortId = toShortOrderId(order?.order_number);
+    console.log(`[FLW Subscription] Plan ${planId} cancelled for order ${shortId}`);
+
+    if (process.env.ADMIN_EMAIL) {
+      transporter.sendMail({
+        from: `"Magena Pilates" <${process.env.GMAIL_EMAIL}>`,
+        to: process.env.ADMIN_EMAIL,
+        subject: `Rental Subscription Cancelled — ${shortId}`,
+        html: `<div style="font-family:sans-serif;padding:24px"><h3>Subscription Cancelled</h3><p>Customer: ${order?.customer_name || customerEmail}</p><p>Product: ${order?.product_name}</p><p>Order: ${shortId}</p><p>Plan ID: ${planId}</p></div>`,
+      }).catch((err) => console.error('[FLW email] Sub cancelled:', err.message));
+    }
+  }
+}
+
+// ── Email templates ───────────────────────────────────────────────────────────
+
+function buildConfirmationEmail({ order, shortId, amountPaid, paymentMethod, reference, isRental, planId }) {
+  const typeLabel = isRental ? 'Monthly Rental' : 'Purchase';
+  const subscriptionNote = isRental && planId
+    ? `<div style="background:#EFF6FF;border-left:4px solid #3B82F6;padding:12px 16px;border-radius:4px;margin:16px 0;font-size:13px;color:#1E40AF">
+        <strong>Subscription active:</strong> Your monthly rental payments are set up automatically. You'll be charged each month — no action needed.
+       </div>`
+    : '';
+
   return `
     <div style="font-family:sans-serif;max-width:520px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #eee">
       <div style="background:#3D3530;padding:28px 32px;text-align:center">
@@ -205,6 +344,8 @@ function buildConfirmationEmail({ order, shortId, amountPaid, paymentMethod, ref
         <p style="color:#555;margin:0 0 24px;font-size:15px">
           Hi <strong>${order.customer_name}</strong>, your pre-order is confirmed and payment received. We'll be in touch when your equipment is ready!
         </p>
+
+        ${subscriptionNote}
 
         <table style="background:#F7F4F0;border-radius:10px;padding:20px;width:100%;border-collapse:collapse">
           <tr><td style="padding:8px 12px;color:#888;font-size:13px;width:150px">Order ID</td><td style="padding:8px 12px;font-weight:bold;font-size:14px;color:#3D3530">${shortId}</td></tr>
@@ -231,7 +372,7 @@ function buildConfirmationEmail({ order, shortId, amountPaid, paymentMethod, ref
   `;
 }
 
-function buildAdminNotificationEmail({ order, shortId, amountPaid }) {
+function buildAdminNotificationEmail({ order, shortId, amountPaid, isRental, planId }) {
   return `
     <div style="font-family:sans-serif;max-width:520px;margin:auto;background:#fff;border-radius:8px;border:1px solid #eee;padding:24px">
       <h2 style="color:#3D3530;margin:0 0 16px">New Pre-Order — ${shortId}</h2>
@@ -244,8 +385,28 @@ function buildAdminNotificationEmail({ order, shortId, amountPaid }) {
         <tr><td style="padding:6px 0;color:#888">Engraving</td><td style="padding:6px 0">${order.wants_engraving ? 'Yes' : 'No'}</td></tr>
         <tr><td style="padding:6px 0;color:#888">Amount</td><td style="padding:6px 0;font-weight:bold">KES ${Number(amountPaid).toLocaleString()}</td></tr>
         <tr><td style="padding:6px 0;color:#888">Address</td><td style="padding:6px 0">${order.customer_address || '—'}</td></tr>
+        ${isRental && planId ? `<tr><td style="padding:6px 0;color:#888">Subscription Plan ID</td><td style="padding:6px 0;font-size:12px;font-family:monospace">${planId}</td></tr>` : ''}
         ${order.notes ? `<tr><td style="padding:6px 0;color:#888">Notes</td><td style="padding:6px 0">${order.notes}</td></tr>` : ''}
       </table>
+    </div>
+  `;
+}
+
+function buildRecurringChargeEmail({ customerEmail, customerName, shortId, amount, currency, flwRef, chargeStatus }) {
+  const isPaid = chargeStatus === 'paid';
+  const color = isPaid ? '#22c55e' : '#ef4444';
+  const label = isPaid ? 'Payment Received' : 'PAYMENT FAILED';
+  return `
+    <div style="font-family:sans-serif;max-width:520px;margin:auto;background:#fff;border-radius:8px;border:1px solid #eee;padding:24px">
+      <h2 style="color:${color};margin:0 0 16px">Rental Subscription — ${label}</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <tr><td style="padding:6px 0;color:#888;width:130px">Order</td><td style="padding:6px 0;font-weight:bold">${shortId}</td></tr>
+        <tr><td style="padding:6px 0;color:#888">Customer</td><td style="padding:6px 0">${customerName || customerEmail}</td></tr>
+        <tr><td style="padding:6px 0;color:#888">Email</td><td style="padding:6px 0">${customerEmail}</td></tr>
+        <tr><td style="padding:6px 0;color:#888">Amount</td><td style="padding:6px 0;font-weight:bold;color:${color}">${currency || 'KES'} ${Number(amount).toLocaleString()}</td></tr>
+        ${flwRef ? `<tr><td style="padding:6px 0;color:#888">FLW Ref</td><td style="padding:6px 0;font-family:monospace;font-size:12px">${flwRef}</td></tr>` : ''}
+      </table>
+      ${!isPaid ? '<p style="color:#ef4444;font-size:13px;margin:16px 0 0">Flutterwave will retry 3 more times. If all fail, the subscription is cancelled automatically.</p>' : ''}
     </div>
   `;
 }

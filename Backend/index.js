@@ -22,7 +22,7 @@ app.set('trust proxy', 1);
 // CORS — allow the configured frontend URL plus any Vercel preview deployments
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow server-to-server requests (no origin header) and Pesapal IPN calls
+    // Allow server-to-server requests (no origin header) and Flutterwave webhook calls
     if (!origin) return callback(null, true);
 
     const allowed = process.env.FRONTEND_URL?.trim();
