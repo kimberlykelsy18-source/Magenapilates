@@ -1,214 +1,208 @@
-const axios = require('axios');
+const axios  = require('axios');
+const crypto = require('crypto');
 
-// ── Two API versions, two auth styles ────────────────────────────────────────
-//
-//  v4  — one-time card payments (hosted checkout)
-//        Auth: OAuth 2.0 client credentials → Bearer access token
-//        Base: https://api.flutterwave.com/v4
-//
-//  v3  — payment plans & subscriptions (recurring billing)
-//        Auth: Bearer {FLW_CLIENT_SECRET} directly (the v3 secret key)
-//        Base: https://api.flutterwave.com/v3
+// Flutterwave V4 — Keycloak OAuth2 + direct card API
+// Sandbox: https://developersandbox-api.flutterwave.com
+// Production: https://api.flutterwave.com
 
-const V4_BASE = 'https://api.flutterwave.com/v4';
-const V3_BASE = 'https://api.flutterwave.com/v3';
+const TOKEN_URL = 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token';
 
-// ── v4 OAuth token cache ──────────────────────────────────────────────────────
-
-let _v4Token = null;
-let _v4TokenExpiry = 0;
-
-async function getV4AccessToken() {
-  if (_v4Token && Date.now() < _v4TokenExpiry) return _v4Token;
-
-  const { data } = await axios.post(
-    'https://api.flutterwave.com/oauth/token',
-    {
-      client_id: process.env.FLW_CLIENT_ID?.trim(),
-      client_secret: process.env.FLW_CLIENT_SECRET?.trim(),
-      grant_type: 'client_credentials',
-    },
-    { headers: { 'Content-Type': 'application/json' } }
-  );
-
-  if (!data.access_token)
-    throw new Error('Flutterwave v4 OAuth failed: ' + JSON.stringify(data));
-
-  _v4Token = data.access_token;
-  _v4TokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-  return _v4Token;
+function apiBase() {
+  return process.env.FLW_ENV === 'production'
+    ? 'https://api.flutterwave.com'
+    : 'https://developersandbox-api.flutterwave.com';
 }
 
-async function v4Headers() {
-  const token = await getV4AccessToken();
-  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-}
+// ── Token cache ──────────────────────────────────────────────────────────────
+let _cachedToken = null;
+let _tokenExpiry  = 0;
 
-// ── v3 headers — secret key used directly as Bearer ──────────────────────────
+async function getToken() {
+  if (_cachedToken && Date.now() < _tokenExpiry) return _cachedToken;
 
-function v3Headers() {
-  const key = process.env.FLW_CLIENT_SECRET?.trim();
-  if (!key) throw new Error('FLW_CLIENT_SECRET is not set');
-  return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
-}
+  const params = new URLSearchParams();
+  params.append('grant_type',    'client_credentials');
+  params.append('client_id',     process.env.FLW_CLIENT_ID);
+  params.append('client_secret', process.env.FLW_CLIENT_SECRET);
 
-// ── v4: One-time Card Payments (purchase + first rental payment) ──────────────
-
-/**
- * Initiate a Flutterwave v4 hosted checkout.
- * For rental orders, pass paymentPlanId so the card is tokenised for future charges.
- * Returns { link } — redirect the customer to this URL.
- */
-async function initiatePayment({
-  txRef,
-  amount,
-  currency = 'KES',
-  redirectUrl,
-  customer,         // { email, name, phonenumber }
-  customizations,   // { title, description, logo }
-  paymentPlanId,    // optional — set for rental to attach the v3 plan
-}) {
-  const payload = {
-    tx_ref: txRef,
-    amount,
-    currency,
-    redirect_url: redirectUrl,
-    customer,
-    customizations,
-  };
-
-  if (paymentPlanId) payload.payment_plan = paymentPlanId;
-
-  const { data } = await axios.post(`${V4_BASE}/payments`, payload, {
-    headers: await v4Headers(),
+  const { data } = await axios.post(TOKEN_URL, params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 
-  if (data.status !== 'success')
-    throw new Error('Flutterwave v4 payment initiation failed: ' + JSON.stringify(data));
+  if (!data.access_token) throw new Error('[FLW] Token fetch failed: ' + JSON.stringify(data));
 
-  return data.data; // { link }
+  _cachedToken = data.access_token;
+  _tokenExpiry  = Date.now() + ((data.expires_in || 3600) - 60) * 1000;
+  console.log('[FLW] Token obtained');
+  return _cachedToken;
 }
 
-// ── v4: Transaction Verification ─────────────────────────────────────────────
+function makeId(prefix) {
+  return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+}
 
-/**
- * Verify a transaction by its numeric ID (appended to redirect_url as ?transaction_id=).
- * Always verify server-side — never trust the client-reported status.
- */
-async function verifyTransaction(transactionId) {
+async function authHeaders(traceId) {
+  const token  = await getToken();
+  const xTrace = traceId ? makeId(traceId) : makeId('mgn');
+  const xIdem  = makeId('ik');
+  return {
+    Authorization:       `Bearer ${token}`,
+    'Content-Type':      'application/json',
+    'X-Trace-Id':        xTrace,
+    'X-Idempotency-Key': xIdem,
+  };
+}
+
+// ── AES-256-GCM Encryption ───────────────────────────────────────────────────
+// Key = Base64-decoded FLW_ENCRYPTION_KEY (from Flutterwave dashboard Settings → API Keys)
+// IV  = 12-byte nonce (hex string)
+
+function generateNonce() {
+  return crypto.randomBytes(6).toString('hex'); // 12 hex chars = 12 bytes
+}
+
+function encryptField(value, nonce) {
+  const encKey = process.env.FLW_ENCRYPTION_KEY;
+  if (!encKey) throw new Error('[FLW] FLW_ENCRYPTION_KEY is not set');
+  const key       = Buffer.from(encKey, 'base64');
+  const iv        = Buffer.from(nonce, 'utf8');
+  const cipher    = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  const authTag   = cipher.getAuthTag();
+  return Buffer.concat([encrypted, authTag]).toString('base64');
+}
+
+// ── Step 1: Create customer ──────────────────────────────────────────────────
+async function createCustomer({ email, name, phone }) {
+  const parts     = (name || '').trim().split(/\s+/);
+  const firstName = parts[0] || email;
+  const lastName  = parts.slice(1).join(' ') || parts[0] || email;
+  const phoneDigits = (phone || '').replace(/\D/g, '').replace(/^(254|0)/, '');
+
+  const payload = { email, name: { first: firstName, last: lastName } };
+  if (phoneDigits) payload.phone = { country_code: '254', number: phoneDigits };
+
+  const headers = await authHeaders(`cus-${Date.now()}`);
+
+  try {
+    const { data } = await axios.post(`${apiBase()}/customers`, payload, { headers });
+    if (!data.data?.id) throw new Error('[FLW] Customer create failed: ' + JSON.stringify(data));
+    console.log('[FLW] Customer created:', data.data.id);
+    return data.data;
+  } catch (err) {
+    const code = err.response?.data?.error?.code;
+    if (code === '10409') {
+      console.log('[FLW] Customer already exists, fetching by email:', email);
+      return await getCustomerByEmail(email);
+    }
+    const errData = err.response?.data;
+    console.error('[FLW] Customer error:', JSON.stringify(errData, null, 2));
+    throw new Error('[FLW] Customer create failed: ' + JSON.stringify(errData));
+  }
+}
+
+async function getCustomerByEmail(email) {
+  const headers = await authHeaders(`cus-get-${Date.now()}`);
   const { data } = await axios.get(
-    `${V4_BASE}/transactions/${transactionId}/verify`,
-    { headers: await v4Headers() }
+    `${apiBase()}/customers?email=${encodeURIComponent(email)}`,
+    { headers }
   );
-
-  if (data.status !== 'success')
-    throw new Error('Flutterwave v4 verify failed: ' + JSON.stringify(data));
-
-  return data.data; // full transaction object
+  const customer = Array.isArray(data.data) ? data.data[0] : data.data;
+  if (!customer?.id) throw new Error('[FLW] Existing customer not found for email: ' + email);
+  console.log('[FLW] Existing customer found:', customer.id);
+  return customer;
 }
 
-// ── v3: Payment Plans (Monthly Rental Subscriptions) ─────────────────────────
-//
-// HOW IT WORKS:
-//   1. Create a v3 payment plan (amount = monthly rental only, duration = 5 months).
-//   2. Pass plan ID when initiating the v4 checkout.
-//      → Flutterwave restricts the checkout to card-only and tokenises the card.
-//      → First charge = deposit + first month (the payload amount), processed now.
-//   3. Flutterwave auto-charges the plan amount each month for months 2–5.
-//   4. Each auto-charge fires a "charge.completed" webhook (success or failed).
-//   5. After duration=5 charges total (incl. first), the plan stops automatically.
+// ── Step 2: Create payment method (encrypted card) ───────────────────────────
+async function createPaymentMethod({ cardNumber, expiryMonth, expiryYear, cvv }) {
+  const nonce   = generateNonce();
+  const headers = await authHeaders(`pmd-${Date.now()}`);
 
-/**
- * Create a recurring payment plan via v3.
- *
- * @param {string} opts.name       e.g. "Reformer Rental — Monthly (PRE-A001)"
- * @param {number} opts.amount     Monthly rental rate in KES (NOT the deposit)
- * @param {number} opts.duration   Total billing cycles incl. first payment (5 = 5 months)
- * @param {string} [opts.currency] Default "KES"
- * @param {string} [opts.interval] Default "monthly"
- *
- * Returns { id, plan_token, name, amount, interval, duration, status, ... }
- */
-async function createPaymentPlan({ name, amount, duration, currency = 'KES', interval = 'monthly' }) {
-  const { data } = await axios.post(
-    `${V3_BASE}/payment-plans`,
-    { name, amount, currency, interval, duration },
-    { headers: v3Headers() }
+  const month = String(expiryMonth).padStart(2, '0').slice(-2);
+  const year  = String(expiryYear).slice(-2);
+
+  const payload = {
+    type: 'card',
+    card: {
+      encrypted_card_number:  encryptField(cardNumber.replace(/\s/g, ''), nonce),
+      encrypted_expiry_month: encryptField(month, nonce),
+      encrypted_expiry_year:  encryptField(year, nonce),
+      encrypted_cvv:          encryptField(cvv, nonce),
+      nonce,
+    },
+  };
+
+  console.log('[FLW] createPaymentMethod — expiry:', month + '/' + year);
+
+  try {
+    const { data } = await axios.post(`${apiBase()}/payment-methods`, payload, { headers });
+    if (!data.data?.id) throw new Error('[FLW] Payment method create failed: ' + JSON.stringify(data));
+    console.log('[FLW] Payment method:', data.data.id);
+    return data.data;
+  } catch (err) {
+    const errData = err.response?.data;
+    console.error('[FLW] Payment method error:', JSON.stringify(errData, null, 2));
+    throw new Error('[FLW] Payment method create failed: ' + JSON.stringify(errData));
+  }
+}
+
+// ── Step 3: Create charge ────────────────────────────────────────────────────
+async function createCharge({ customerId, paymentMethodId, txRef, amount, currency, redirectUrl, description }) {
+  const headers = await authHeaders(txRef);
+  const ref = txRef.length >= 6 ? txRef.slice(0, 42) : txRef.padEnd(6, '0');
+
+  try {
+    const { data } = await axios.post(`${apiBase()}/charges`, {
+      reference:         ref,
+      currency:          currency || 'KES',
+      amount,
+      customer_id:       customerId,
+      payment_method_id: paymentMethodId,
+      redirect_url:      redirectUrl,
+      meta:              description ? { description } : {},
+    }, { headers });
+
+    if (!data.data) throw new Error('[FLW] Charge create failed: ' + JSON.stringify(data));
+    console.log('[FLW] Charge:', data.data.id, '| next_action:', data.data.next_action?.type || 'none');
+    return data.data;
+  } catch (err) {
+    const errData = err.response?.data;
+    console.error('[FLW] Charge error:', JSON.stringify(errData, null, 2));
+    throw new Error('[FLW] Charge create failed: ' + JSON.stringify(errData));
+  }
+}
+
+// ── Step 4: Authorize charge (PIN / OTP / AVS) ───────────────────────────────
+async function updateCharge(chargeId, authorization) {
+  const headers = await authHeaders(`auth-${chargeId}-${Date.now()}`);
+
+  // Encrypt PIN before sending
+  let auth = authorization;
+  if (authorization.type === 'pin' && authorization.pin?.rawPin) {
+    const nonce = generateNonce();
+    auth = {
+      type: 'pin',
+      pin: { nonce, encrypted_pin: encryptField(authorization.pin.rawPin, nonce) },
+    };
+  }
+
+  const { data } = await axios.put(
+    `${apiBase()}/charges/${chargeId}`,
+    { authorization: auth },
+    { headers }
   );
 
-  if (data.status !== 'success')
-    throw new Error('Flutterwave v3 plan creation failed: ' + JSON.stringify(data));
-
+  if (!data.data) throw new Error('[FLW] Charge update failed: ' + JSON.stringify(data));
+  console.log('[FLW] Charge updated:', chargeId, '| next_action:', data.data.next_action?.type || 'none');
   return data.data;
 }
 
-/**
- * Fetch a payment plan by ID (v3).
- */
-async function getPaymentPlan(planId) {
-  const { data } = await axios.get(`${V3_BASE}/payment-plans/${planId}`, { headers: v3Headers() });
-  if (data.status !== 'success') throw new Error('getPaymentPlan failed: ' + JSON.stringify(data));
+// ── Get charge (verify status) ───────────────────────────────────────────────
+async function getCharge(chargeId) {
+  const headers = await authHeaders(`get-${chargeId}`);
+  const { data } = await axios.get(`${apiBase()}/charges/${chargeId}`, { headers });
+  if (!data.data) throw new Error('[FLW] Get charge failed: ' + JSON.stringify(data));
   return data.data;
 }
 
-/**
- * Cancel ALL subscriptions under a plan (affects every customer on this plan).
- * Use cancelCustomerSubscription() to cancel for a single customer only.
- */
-async function cancelPaymentPlan(planId) {
-  const { data } = await axios.put(
-    `${V3_BASE}/payment-plans/${planId}/cancel`,
-    {},
-    { headers: v3Headers() }
-  );
-  return data;
-}
-
-/**
- * List subscriptions — filter by email to find a specific customer's subscription ID.
- */
-async function listSubscriptions({ email } = {}) {
-  const url = email
-    ? `${V3_BASE}/subscriptions?email=${encodeURIComponent(email)}`
-    : `${V3_BASE}/subscriptions`;
-  const { data } = await axios.get(url, { headers: v3Headers() });
-  if (data.status !== 'success') throw new Error('listSubscriptions failed: ' + JSON.stringify(data));
-  return data.data;
-}
-
-/**
- * Cancel a single customer's subscription by subscription ID.
- * Get the ID first: listSubscriptions({ email }) → find matching plan → subscription.id
- * Fires "subscription.cancelled" webhook on success.
- */
-async function cancelCustomerSubscription(subscriptionId) {
-  const { data } = await axios.put(
-    `${V3_BASE}/subscriptions/${subscriptionId}/cancel`,
-    {},
-    { headers: v3Headers() }
-  );
-  return data;
-}
-
-/**
- * Reactivate a previously cancelled subscription.
- */
-async function activateCustomerSubscription(subscriptionId) {
-  const { data } = await axios.put(
-    `${V3_BASE}/subscriptions/${subscriptionId}/activate`,
-    {},
-    { headers: v3Headers() }
-  );
-  return data;
-}
-
-module.exports = {
-  initiatePayment,
-  verifyTransaction,
-  createPaymentPlan,
-  getPaymentPlan,
-  cancelPaymentPlan,
-  listSubscriptions,
-  cancelCustomerSubscription,
-  activateCustomerSubscription,
-};
+module.exports = { createCustomer, createPaymentMethod, createCharge, updateCharge, getCharge };

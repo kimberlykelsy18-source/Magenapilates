@@ -20,10 +20,12 @@ interface Order {
 
 export function OrderSuccess() {
   const [params] = useSearchParams();
-  // Flutterwave appends transaction_id, tx_ref, and status to the redirect URL
-  const transactionId = params.get('transaction_id');
-  const txRef = params.get('tx_ref');
-  const flwStatus = params.get('status');
+  // Flutterwave v4 (3DS redirect) appends: ?status=successful&reference=PRE-A001&charge_id=xxx
+  // Non-3DS payments succeed inline and navigate here with: ?status=successful&reference=PRE-A001
+  const txRef      = params.get('reference') || params.get('tx_ref');
+  const chargeId   = params.get('charge_id');
+  const transactionId = params.get('transaction_id'); // kept for backwards compat
+  const flwStatus  = params.get('status');
 
   const [status, setStatus] = useState<'loading' | 'completed' | 'failed' | 'pending' | 'error'>('loading');
   const [order, setOrder] = useState<Order | null>(null);
@@ -48,9 +50,9 @@ export function OrderSuccess() {
     async function poll() {
       try {
         const queryParams = new URLSearchParams();
-        if (transactionId) queryParams.set('transaction_id', transactionId);
         queryParams.set('tx_ref', txRef!);
-        if (flwStatus) queryParams.set('status', flwStatus);
+        if (chargeId) queryParams.set('charge_id', chargeId);
+        if (transactionId) queryParams.set('transaction_id', transactionId);
 
         const { data } = await apiFetch(`${API}/api/flutterwave/status?${queryParams}`);
 
