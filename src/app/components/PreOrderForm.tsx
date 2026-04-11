@@ -292,7 +292,7 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
           </RadioGroup>
           {formData.paymentMethod === 'card' && (
             <div className="mt-2 p-3 bg-blue-50 border border-blue-200 text-sm text-blue-900">
-              <p>Card payments are processed securely via Flutterwave. You'll enter your card details on the next screen — no redirect required.</p>
+              <p>Card payments are processed securely via Paystack. You'll enter your card details on the next screen — no redirect required.</p>
             </div>
           )}
         </div>

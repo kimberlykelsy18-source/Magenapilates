@@ -16,7 +16,7 @@ interface CheckoutFlowProps {
   onCancel: () => void;
 }
 
-type Stage = 'card-form' | 'pin' | 'otp' | 'processing' | 'done';
+type Stage = 'card-form' | 'pin' | 'otp' | 'phone' | 'birthday' | 'processing' | 'done';
 
 function formatCardNumber(val: string) {
   return val.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim();
@@ -33,11 +33,12 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
   const [expiryYear, setExpiryYear]   = useState('');
   const [cvv, setCvv]                 = useState('');
 
-  // PIN / OTP auth state
-  const [pendingChargeId, setPendingChargeId] = useState('');
-  const [pendingTxRef, setPendingTxRef]       = useState('');
-  const [pinInput, setPinInput] = useState('');
-  const [otpInput, setOtpInput] = useState('');
+  // auth challenge state
+  const [pendingReference, setPendingReference] = useState('');
+  const [pinInput, setPinInput]       = useState('');
+  const [otpInput, setOtpInput]       = useState('');
+  const [phoneInput, setPhoneInput]   = useState('');
+  const [birthdayInput, setBirthdayInput] = useState('');
 
   const isMpesa  = order.paymentMethod === 'mpesa';
   const isRental = order.orderType === 'rental';
@@ -82,7 +83,7 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
     }
   };
 
-  // ── RENTAL — v3 hosted checkout (redirect) ────────────────────────────────
+  // ── RENTAL — Paystack hosted checkout (redirect) ─────────────────────────
   const handleRentalCheckout = async () => {
     setLoading(true);
     setError('');
@@ -93,7 +94,7 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
         body: JSON.stringify(basePayload()),
       });
       if (!ok) throw new Error(data?.error || 'Failed to initiate rental checkout');
-      // Redirect to Flutterwave v3 hosted checkout
+      // Redirect to Paystack hosted checkout
       window.location.href = data.redirect_url;
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please try again.');
@@ -101,7 +102,7 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
     }
   };
 
-  // ── PURCHASE — v4 direct card API ────────────────────────────────────────
+  // ── PURCHASE — Paystack direct card API ──────────────────────────────────
   const handleCardSubmit = async () => {
     const rawNumber = cardNumber.replace(/\s/g, '');
     if (!rawNumber || rawNumber.length < 13) { setError('Please enter a valid card number.'); return; }
@@ -121,19 +122,24 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
 
       if (!ok) throw new Error(data?.error || 'Card payment failed. Please try again.');
 
-      setPendingChargeId(data.charge_id);
-      setPendingTxRef(data.tx_ref || data.short_id);
+      setPendingReference(data.reference);
 
-      const action = data.next_action;
+      const action = data.action; // 'send_pin' | 'send_otp' | 'open_url' | null
       if (!action) {
         setStage('done');
         onSuccess(data.order_id);
-      } else if (action.type === 'redirect_url') {
-        window.location.href = action.redirect_url?.url || action.redirect_url;
-      } else if (action.type === 'requires_pin') {
+      } else if (action === 'open_url' && data.url) {
+        window.location.href = data.url;
+      } else if (action === 'send_pin') {
         setStage('pin');
+      } else if (action === 'send_otp') {
+        setStage('otp');
+      } else if (action === 'send_phone') {
+        setStage('phone');
+      } else if (action === 'send_birthday') {
+        setStage('birthday');
       } else {
-        throw new Error(`Unsupported auth type: ${action.type}. Please try a different card.`);
+        throw new Error(`Unsupported auth step: ${action}. Please try a different card.`);
       }
     } catch (err: any) {
       setError(err.message || 'Card payment failed. Please try again.');
@@ -142,50 +148,74 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
     }
   };
 
+  async function submitChallenge(type: string, value: string) {
+    const { ok, data } = await apiFetch(`${API}/api/orders/card/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference: pendingReference, type, value }),
+    });
+    if (!ok) throw new Error(data?.error || 'Authorization failed.');
+    return data;
+  }
+
+  function handleNextAction(data: any) {
+    const action = data.action;
+    if (!action) { setStage('done'); onSuccess(pendingReference); return; }
+    if (action === 'open_url' && data.url) { window.location.href = data.url; return; }
+    if (action === 'send_pin')      { setStage('pin');      return; }
+    if (action === 'send_otp')      { setStage('otp');      return; }
+    if (action === 'send_phone')    { setStage('phone');    return; }
+    if (action === 'send_birthday') { setStage('birthday'); return; }
+    throw new Error('Payment could not be completed. Please try again.');
+  }
+
   const handlePinSubmit = async () => {
     if (!pinInput || pinInput.length < 4) { setError('Please enter your 4-digit card PIN.'); return; }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const { ok, data } = await apiFetch(`${API}/api/orders/card/authorize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ charge_id: pendingChargeId, authorization: { type: 'pin', pin: { rawPin: pinInput } } }),
-      });
-      if (!ok) throw new Error(data?.error || 'PIN authorization failed.');
+      const data = await submitChallenge('pin', pinInput);
       setPinInput('');
-      const action = data.next_action;
-      if (!action) { setStage('done'); onSuccess(pendingTxRef); }
-      else if (action.type === 'requires_otp' || action.type === 'otp') setStage('otp');
-      else if (action.type === 'redirect_url') window.location.href = action.redirect_url?.url || action.redirect_url;
-      else throw new Error('Could not complete PIN authorization.');
+      handleNextAction(data);
     } catch (err: any) {
       setError(err.message || 'Incorrect PIN. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleOtpSubmit = async () => {
     if (!otpInput || otpInput.length < 4) { setError('Please enter the OTP sent to your phone.'); return; }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const { ok, data } = await apiFetch(`${API}/api/orders/card/authorize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ charge_id: pendingChargeId, authorization: { type: 'otp', otp: { code: otpInput } } }),
-      });
-      if (!ok) throw new Error(data?.error || 'OTP verification failed.');
+      const data = await submitChallenge('otp', otpInput);
       setOtpInput('');
-      if (!data.next_action) { setStage('done'); onSuccess(pendingTxRef); }
-      else throw new Error('Payment could not be completed. Please try again.');
+      handleNextAction(data);
     } catch (err: any) {
       setError(err.message || 'Invalid OTP. Please try again.');
       setStage('card-form');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
+  };
+
+  const handlePhoneSubmit = async () => {
+    if (!phoneInput) { setError('Please enter your phone number.'); return; }
+    setLoading(true); setError('');
+    try {
+      const data = await submitChallenge('phone', phoneInput);
+      setPhoneInput('');
+      handleNextAction(data);
+    } catch (err: any) {
+      setError(err.message || 'Phone verification failed. Please try again.');
+    } finally { setLoading(false); }
+  };
+
+  const handleBirthdaySubmit = async () => {
+    if (!birthdayInput) { setError('Please enter your date of birth.'); return; }
+    setLoading(true); setError('');
+    try {
+      const data = await submitChallenge('birthday', birthdayInput);
+      setBirthdayInput('');
+      handleNextAction(data);
+    } catch (err: any) {
+      setError(err.message || 'Verification failed. Please try again.');
+    } finally { setLoading(false); }
   };
 
   // ── Order summary strip (shared) ─────────────────────────────────────────
@@ -236,7 +266,7 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
           <CreditCard className="h-8 w-8 text-blue-700 shrink-0" />
           <div>
             <h4 className="font-medium text-blue-900">Secure Card Subscription</h4>
-            <p className="text-sm text-blue-700">You'll be redirected to Flutterwave to enter your card details. Your card is enrolled for automatic monthly billing.</p>
+            <p className="text-sm text-blue-700">You'll be redirected to Paystack to enter your card details. Your card is enrolled for automatic monthly billing.</p>
           </div>
         </div>
         <OrderSummary />
@@ -252,7 +282,7 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
         </div>
         <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
           <Lock className="h-3 w-3" />
-          <span>Secured by Flutterwave</span>
+          <span>Secured by Paystack</span>
         </div>
       </div>
     );
@@ -296,7 +326,7 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
         </div>
         <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
           <Lock className="h-3 w-3" />
-          <span>Secured by Flutterwave — card details are encrypted</span>
+          <span>Secured by Paystack</span>
         </div>
       </div>
     );
@@ -343,6 +373,54 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
         <div className="flex gap-3">
           <Button onClick={handleOtpSubmit} disabled={loading} className="flex-1 text-white py-6 bg-[#3D3530] hover:bg-[#2D2520]">
             {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Verifying...</> : 'Submit OTP'}
+          </Button>
+          <Button onClick={() => { setStage('card-form'); setError(''); }} variant="outline" disabled={loading} className="px-6">Cancel</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Phone ─────────────────────────────────────────────────────────────────
+  if (stage === 'phone') {
+    return (
+      <div className="space-y-6">
+        <div className="text-center pb-4 border-b">
+          <Smartphone className="h-10 w-10 mx-auto mb-3 text-[#3D3530]" />
+          <h3 className="text-xl mb-1">Enter Phone Number</h3>
+          <p className="text-sm text-gray-500">Your bank requires your phone number to proceed.</p>
+        </div>
+        <div>
+          <Label className="text-[#3D3530]">Phone Number</Label>
+          <Input value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} placeholder="+254 7xx xxx xxx" inputMode="tel" className="mt-1" />
+        </div>
+        {error && <p className="text-red-600 text-sm">{error}</p>}
+        <div className="flex gap-3">
+          <Button onClick={handlePhoneSubmit} disabled={loading} className="flex-1 text-white py-6 bg-[#3D3530] hover:bg-[#2D2520]">
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Verifying...</> : 'Submit'}
+          </Button>
+          <Button onClick={() => { setStage('card-form'); setError(''); }} variant="outline" disabled={loading} className="px-6">Cancel</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Birthday ───────────────────────────────────────────────────────────────
+  if (stage === 'birthday') {
+    return (
+      <div className="space-y-6">
+        <div className="text-center pb-4 border-b">
+          <CreditCard className="h-10 w-10 mx-auto mb-3 text-[#3D3530]" />
+          <h3 className="text-xl mb-1">Enter Date of Birth</h3>
+          <p className="text-sm text-gray-500">Your bank requires your date of birth to verify your identity.</p>
+        </div>
+        <div>
+          <Label className="text-[#3D3530]">Date of Birth</Label>
+          <Input value={birthdayInput} onChange={(e) => setBirthdayInput(e.target.value)} placeholder="YYYY-MM-DD" className="mt-1" />
+        </div>
+        {error && <p className="text-red-600 text-sm">{error}</p>}
+        <div className="flex gap-3">
+          <Button onClick={handleBirthdaySubmit} disabled={loading} className="flex-1 text-white py-6 bg-[#3D3530] hover:bg-[#2D2520]">
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Verifying...</> : 'Submit'}
           </Button>
           <Button onClick={() => { setStage('card-form'); setError(''); }} variant="outline" disabled={loading} className="px-6">Cancel</Button>
         </div>

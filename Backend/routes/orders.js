@@ -1,5 +1,5 @@
 const express = require('express');
-const flw = require('../services/flutterwave');
+const paystack = require('../services/paystack');
 
 function toShortOrderId(n) {
   if (!n) return 'PRE-???';
@@ -26,13 +26,13 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
 
   // ── POST /api/orders ────────────────────────────────────────────────────────
   //
-  //  PURCHASE  + card  →  Flutterwave v4 direct card API
-  //                        Frontend sends card details → backend encrypts → charge
-  //                        Returns: { charge_id, tx_ref, next_action }
+  //  PURCHASE  + card  →  Paystack direct card API
+  //                        Frontend sends card details → backend charges → PIN/OTP flow
+  //                        Returns: { reference, action, url? }
   //
-  //  RENTAL    + card  →  Flutterwave v3 payment plan + hosted checkout
+  //  RENTAL    + card  →  Paystack plan + hosted checkout
   //                        Backend creates plan → gets hosted link → redirect customer
-  //                        Returns: { redirect_url, tx_ref }
+  //                        Returns: { redirect_url, reference }
   //
   //  Any       + mpesa →  Manual paybill (confirmed by admin)
   //
@@ -70,127 +70,113 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
       return res.status(500).json({ error: orderError.message });
     }
 
-    const shortId  = toShortOrderId(order.order_number);
+    const shortId   = toShortOrderId(order.order_number);
     const amountDue = Number(total_amount) + Number(deposit_amount || 0);
 
-    // ── PURCHASE + CARD → Flutterwave v4 direct card API ────────────────────
+    // ── PURCHASE + CARD → Paystack direct card API ───────────────────────────
     if (payment_method === 'card' && order_type === 'purchase') {
       if (!card?.number || !card?.expiry_month || !card?.expiry_year || !card?.cvv) {
         return res.status(400).json({ error: 'Card details are required for card payments' });
       }
 
+      const reference = paystack.makeReference(shortId);
+
       try {
-        const customer = await flw.createCustomer({
-          email: customer_email,
-          name:  customer_name,
-          phone: customer_phone,
+        const charge = await paystack.chargeCard({
+          email:     customer_email,
+          amount:    amountDue,
+          reference,
+          card,
         });
 
-        const paymentMethod = await flw.createPaymentMethod({
-          cardNumber:  card.number,
-          expiryMonth: card.expiry_month,
-          expiryYear:  card.expiry_year,
-          cvv:         card.cvv,
-        });
-
-        const charge = await flw.createCharge({
-          customerId:      customer.id,
-          paymentMethodId: paymentMethod.id,
-          txRef:           shortId,
-          amount:          amountDue,
-          currency:        'KES',
-          redirectUrl:     `${process.env.FRONTEND_URL}/order-success`,
-          description:     `Magena Pilates — ${product_name} (Purchase) ${shortId}`,
-        });
-
-        // Store charge ID in flw_plan_id column (reused for v4 charge ID lookup)
         await serviceSupabase.from('payments').insert({
           order_id:            order.id,
-          checkout_request_id: shortId,
+          checkout_request_id: reference,
           amount:              amountDue,
           payment_method:      'card',
           status:              'pending',
-          flw_plan_id:         charge.id, // v4 charge ID stored here for verification
         });
 
-        if (charge.status === 'succeeded' || charge.status === 'successful') {
-          return res.status(201).json({ order_id: order.id, short_id: shortId, charge_id: charge.id, tx_ref: shortId, next_action: null });
+        // Payment immediately successful (e.g. test cards)
+        if (charge.status === 'success') {
+          return res.status(201).json({ order_id: order.id, short_id: shortId, reference, action: null });
         }
 
+        // Payment rejected outright
+        if (charge.status === 'failed') {
+          await serviceSupabase.from('pre_orders').update({ status: 'cancelled' }).eq('id', order.id);
+          return res.status(402).json({ error: charge.display_text || 'Card payment failed. Please check your details.' });
+        }
+
+        // Requires further action: send_pin, send_otp, open_url, send_phone, send_birthday
         return res.status(201).json({
-          order_id:    order.id,
-          short_id:    shortId,
-          charge_id:   charge.id,
-          tx_ref:      shortId,
-          next_action: charge.next_action || null,
+          order_id:     order.id,
+          short_id:     shortId,
+          reference,
+          action:       charge.status,       // 'send_pin' | 'send_otp' | 'open_url' | etc.
+          url:          charge.url || null,  // for open_url (3DS redirect)
+          display_text: charge.display_text || null,
         });
 
       } catch (err) {
-        console.error('[Orders] v4 Purchase error:', err.message);
+        console.error('[Orders] Paystack purchase error:', err.message);
         await serviceSupabase.from('pre_orders').update({ status: 'cancelled' }).eq('id', order.id);
         return res.status(502).json({ error: err.message || 'Payment gateway error. Please try again.' });
       }
     }
 
-    // ── RENTAL + CARD → Flutterwave v3 payment plan + hosted checkout ────────
+    // ── RENTAL + CARD → Paystack plan + hosted checkout ──────────────────────
     if (payment_method === 'card' && order_type === 'rental') {
       try {
-        const rentalAmount  = Number(total_amount);  // monthly rental rate (without deposit)
-        const fixedMonths   = 5;                     // from site_settings — 5-month fixed term
-        const txRef         = `r-${order.id}`;       // unique tx_ref for this rental
+        const rentalAmount = Number(total_amount); // monthly rate (without deposit)
+        const reference    = paystack.makeReference(`r-${shortId}`);
 
-        // Step 1: Create payment plan (v3)
-        // duration=5 → 5 total charges: first checkout + 4 auto-monthly
-        const plan = await flw.createPaymentPlan({
-          name:     `${product_name} — Monthly Rental (${shortId})`,
-          amount:   rentalAmount,
-          duration: fixedMonths,
-          currency: 'KES',
-          interval: 'monthly',
+        // Step 1: Create subscription plan (5 monthly charges)
+        const plan = await paystack.createPlan({
+          name:          `${product_name} — Monthly Rental (${shortId})`,
+          amount:        rentalAmount,
+          interval:      'monthly',
+          invoice_limit: 5,
         });
 
-        // Step 2: Initiate hosted checkout with plan attached (v3)
-        // amount = deposit + first month (charged now)
-        // subsequent months auto-charged by Flutterwave at plan.amount
-        const checkout = await flw.initiateHostedCheckout({
-          txRef,
-          amount:   amountDue,
-          currency: 'KES',
-          redirectUrl: `${process.env.FRONTEND_URL}/order-success`,
-          customer: {
-            email:       customer_email,
-            name:        customer_name,
-            phonenumber: customer_phone,
+        // Step 2: Initialize hosted checkout with plan attached
+        // amountDue = deposit + first month (charged on the hosted page)
+        // Subsequent months auto-charged by Paystack via the plan
+        const tx = await paystack.initializeTransaction({
+          email:        customer_email,
+          amount:       amountDue,
+          reference,
+          plan:         plan.plan_code,
+          callback_url: `${process.env.FRONTEND_URL}/order-success`,
+          metadata: {
+            order_id:  order.id,
+            short_id:  shortId,
+            customer:  customer_name,
           },
-          customizations: {
-            title:       'Magena Pilates',
-            description: `${product_name} — Monthly Rental ${shortId}`,
-          },
-          paymentPlanId: plan.id,
         });
 
-        // Store tx_ref + plan ID
+        // Store reference + plan code for webhook matching
         await serviceSupabase.from('payments').insert({
           order_id:            order.id,
-          checkout_request_id: txRef,
+          checkout_request_id: reference,
           amount:              amountDue,
           payment_method:      'card',
           status:              'pending',
-          flw_plan_id:         String(plan.id), // v3 plan ID for subscription management
+          flw_plan_id:         plan.plan_code, // column reused for Paystack plan code
         });
 
-        console.log(`[Orders] v3 Rental plan ${plan.id} created for ${shortId}`);
+        console.log(`[Orders] Paystack rental plan ${plan.plan_code} created for ${shortId}`);
 
         return res.status(201).json({
           order_id:     order.id,
           short_id:     shortId,
-          redirect_url: checkout.link,
-          tx_ref:       txRef,
-          plan_id:      plan.id,
+          redirect_url: tx.authorization_url,
+          reference,
+          plan_code:    plan.plan_code,
         });
 
       } catch (err) {
-        console.error('[Orders] v3 Rental error:', err.message);
+        console.error('[Orders] Paystack rental error:', err.message);
         await serviceSupabase.from('pre_orders').update({ status: 'cancelled' }).eq('id', order.id);
         return res.status(502).json({ error: err.message || 'Payment gateway error. Please try again.' });
       }
@@ -210,18 +196,41 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
     res.status(400).json({ error: 'Unsupported payment method or order type combination' });
   });
 
-  // ── PIN / OTP authorization (v4 purchase only) ───────────────────────────
+  // ── POST /api/orders/card/authorize ─────────────────────────────────────────
+  // Called by frontend to submit PIN, OTP, or other challenge during card payment.
+  // type: 'pin' | 'otp' | 'phone' | 'birthday'
+  // value: the value to submit (PIN digits, OTP code, phone number, or YYYY-MM-DD date)
   router.post('/api/orders/card/authorize', async (req, res) => {
-    const { charge_id, authorization } = req.body;
-    if (!charge_id || !authorization?.type) {
-      return res.status(400).json({ error: 'charge_id and authorization type required' });
+    const { reference, type, value } = req.body;
+    if (!reference || !type || value === undefined || value === null || value === '') {
+      return res.status(400).json({ error: 'reference, type, and value are required' });
     }
+
     try {
-      const charge = await flw.updateCharge(charge_id, authorization);
-      if (charge.status === 'succeeded' || charge.status === 'successful') {
-        return res.json({ success: true, charge_id, next_action: null });
+      let result;
+      if      (type === 'pin')      result = await paystack.submitPin(reference, value);
+      else if (type === 'otp')      result = await paystack.submitOtp(reference, value);
+      else if (type === 'phone')    result = await paystack.submitPhone(reference, value);
+      else if (type === 'birthday') result = await paystack.submitBirthday(reference, value);
+      else return res.status(400).json({ error: 'Unsupported authorization type: ' + type });
+
+      if (result.status === 'success') {
+        return res.json({ success: true, reference, action: null });
       }
-      return res.json({ success: true, charge_id, next_action: charge.next_action || null });
+
+      if (result.status === 'failed') {
+        return res.status(402).json({ error: result.display_text || 'Authorization failed.' });
+      }
+
+      // More steps needed
+      return res.json({
+        success:      true,
+        reference,
+        action:       result.status,
+        url:          result.url || null,
+        display_text: result.display_text || null,
+      });
+
     } catch (err) {
       console.error('[Orders] Authorize error:', err.message);
       return res.status(502).json({ error: err.message || 'Authorization failed. Please try again.' });

@@ -20,12 +20,10 @@ interface Order {
 
 export function OrderSuccess() {
   const [params] = useSearchParams();
-  // Flutterwave v4 (3DS redirect) appends: ?status=successful&reference=PRE-A001&charge_id=xxx
-  // Non-3DS payments succeed inline and navigate here with: ?status=successful&reference=PRE-A001
-  const txRef      = params.get('reference') || params.get('tx_ref');
-  const chargeId   = params.get('charge_id');
-  const transactionId = params.get('transaction_id'); // kept for backwards compat
-  const flwStatus  = params.get('status');
+  // Paystack hosted checkout appends: ?reference=xxx&trxref=xxx
+  // Direct card payments navigate here with order_id after inline success
+  const reference  = params.get('reference') || params.get('trxref');
+  const flwStatus  = params.get('status'); // 'cancelled' from some redirects
 
   const [status, setStatus] = useState<'loading' | 'completed' | 'failed' | 'pending' | 'error'>('loading');
   const [order, setOrder] = useState<Order | null>(null);
@@ -34,12 +32,12 @@ export function OrderSuccess() {
   const [isSubscription, setIsSubscription] = useState(false);
 
   useEffect(() => {
-    if (!txRef) {
+    if (!reference) {
       setStatus('error');
       return;
     }
 
-    // If Flutterwave explicitly says cancelled/failed, show immediately
+    // If Paystack explicitly says cancelled/failed, show immediately
     if (flwStatus === 'cancelled' || flwStatus === 'failed') {
       setStatus('failed');
       return;
@@ -49,12 +47,7 @@ export function OrderSuccess() {
 
     async function poll() {
       try {
-        const queryParams = new URLSearchParams();
-        queryParams.set('tx_ref', txRef!);
-        if (chargeId) queryParams.set('charge_id', chargeId);
-        if (transactionId) queryParams.set('transaction_id', transactionId);
-
-        const { data } = await apiFetch(`${API}/api/flutterwave/status?${queryParams}`);
+        const { data } = await apiFetch(`${API}/api/paystack/status?reference=${encodeURIComponent(reference!)}`);
 
         if (cancelled) return;
 
@@ -85,7 +78,7 @@ export function OrderSuccess() {
     poll();
 
     return () => { cancelled = true; };
-  }, [txRef, transactionId, flwStatus]);
+  }, [reference, flwStatus]);
 
   if (status === 'loading') {
     return (
@@ -161,10 +154,10 @@ export function OrderSuccess() {
                 <span className="text-gray-500">Amount Paid</span>
                 <span className="font-medium text-green-700">KES {amountPaid}</span>
               </div>
-              {transactionId && (
+              {reference && (
                 <div className="flex justify-between border-t pt-2">
-                  <span className="text-gray-500">Transaction ID</span>
-                  <span className="font-mono text-xs text-gray-600 break-all text-right max-w-[180px]">{transactionId}</span>
+                  <span className="text-gray-500">Paystack Ref</span>
+                  <span className="font-mono text-xs text-gray-600 break-all text-right max-w-[180px]">{reference}</span>
                 </div>
               )}
               {paymentReference && (
@@ -223,9 +216,9 @@ export function OrderSuccess() {
         <Loader2 className="h-12 w-12 text-[#3D3530] mx-auto mb-4" />
         <h2 className="text-xl text-[#3D3530] mb-2">Payment Pending</h2>
         <p className="text-gray-600 text-sm mb-6">
-          We're still waiting for payment confirmation from Flutterwave. Check your email — if payment went through you'll receive a confirmation shortly.
+          We're still waiting for payment confirmation from Paystack. Check your email — if payment went through you'll receive a confirmation shortly.
         </p>
-        {txRef && <p className="text-xs text-gray-400 mb-6">Reference: {txRef}</p>}
+        {reference && <p className="text-xs text-gray-400 mb-6">Reference: {reference}</p>}
         <Link
           to="/"
           className="block w-full bg-[#3D3530] text-white py-3 text-sm tracking-wider hover:bg-[#2D2520] transition-colors"
