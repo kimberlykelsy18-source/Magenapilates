@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Minus, Plus, Globe } from 'lucide-react';
 import { Currency, currencies, convertPrice, formatPrice } from '../utils/currency';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import logoImg from '../../assets/053cd6f353a6bc54a9e76207dbf8b76552b71b53.png';
+import logoImg from '../../assets/magena-logo-stacked-dark.svg';
+import customerBg from '../../assets/customer_page_bg.png';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -85,12 +86,12 @@ export function CustomerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#EBE6DD]">
+    <div className="min-h-screen" style={{ backgroundImage: `url(${customerBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundAttachment: 'fixed' }}>
       {/* Header */}
-      <header className="bg-[#EBE6DD] border-b border-[#3D3530] py-6">
+      <header className="border-b border-[#3D3530]/20 py-6 bg-white/40 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto px-4 text-center">
-          <img src={logoImg} alt="Magena Pilates" className="h-16 mx-auto mb-2" />
-          <p className="text-sm text-[#3D3530]">Pre-Order Equipment</p>
+          <img src={logoImg} alt="Magena Pilates" className="h-28 mx-auto" />
+          <p className="text-xs tracking-widest uppercase text-[#6B5C53] mt-1">Pre-Order Equipment</p>
         </div>
       </header>
 
