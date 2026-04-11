@@ -1,3 +1,4 @@
+
 const axios  = require('axios');
 const crypto = require('crypto');
 
@@ -213,12 +214,14 @@ async function getCharge(chargeId) {
 
 const V3_BASE = 'https://api.flutterwave.com/v3';
 
-// v3 uses the same OAuth access token as v4 — the docs confirm:
-// "The Authorization header takes your secret key as a Bearer token
-//  (the same key you obtain via your client credentials flow)."
-async function v3Headers() {
-  const token = await getToken();
-  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+// v3 uses a separate secret key as Bearer (NOT the v4 OAuth token).
+// Get it from: Flutterwave Dashboard > Settings > API Keys > Secret key
+// Add it to .env as FLW_SECRET_KEY (looks like FLWSECK_TEST-xxxxxxxxxx)
+function v3Headers() {
+  const key = process.env.FLW_SECRET_KEY?.trim();
+  if (!key || key === 'PASTE_YOUR_V3_SECRET_KEY_HERE')
+    throw new Error('[FLW v3] FLW_SECRET_KEY is not set in .env — add your Flutterwave v3 Secret Key');
+  return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 }
 
 /**
@@ -230,7 +233,7 @@ async function createPaymentPlan({ name, amount, duration, currency = 'KES', int
   const { data } = await axios.post(
     `${V3_BASE}/payment-plans`,
     { name, amount, currency, interval, duration },
-    { headers: await v3Headers() }
+    { headers: v3Headers() }
   );
   if (data.status !== 'success') throw new Error('[FLW v3] Plan creation failed: ' + JSON.stringify(data));
   console.log('[FLW v3] Payment plan created:', data.data.id);
@@ -253,7 +256,7 @@ async function initiateHostedCheckout({ txRef, amount, currency = 'KES', redirec
   };
   if (paymentPlanId) payload.payment_plan = paymentPlanId;
 
-  const { data } = await axios.post(`${V3_BASE}/payments`, payload, { headers: await v3Headers() });
+  const { data } = await axios.post(`${V3_BASE}/payments`, payload, { headers: v3Headers() });
   if (data.status !== 'success') throw new Error('[FLW v3] Hosted checkout failed: ' + JSON.stringify(data));
   console.log('[FLW v3] Hosted checkout link obtained');
   return data.data; // { link }
@@ -265,7 +268,7 @@ async function initiateHostedCheckout({ txRef, amount, currency = 'KES', redirec
 async function verifyTransaction(transactionId) {
   const { data } = await axios.get(
     `${V3_BASE}/transactions/${transactionId}/verify`,
-    { headers: await v3Headers() }
+    { headers: v3Headers() }
   );
   if (data.status !== 'success') throw new Error('[FLW v3] Verify failed: ' + JSON.stringify(data));
   return data.data;
@@ -275,7 +278,7 @@ async function verifyTransaction(transactionId) {
  * Cancel all subscriptions under a plan (affects all customers on this plan).
  */
 async function cancelPaymentPlan(planId) {
-  const { data } = await axios.put(`${V3_BASE}/payment-plans/${planId}/cancel`, {}, { headers: await v3Headers() });
+  const { data } = await axios.put(`${V3_BASE}/payment-plans/${planId}/cancel`, {}, { headers: v3Headers() });
   return data;
 }
 
@@ -286,7 +289,7 @@ async function listSubscriptions({ email } = {}) {
   const url = email
     ? `${V3_BASE}/subscriptions?email=${encodeURIComponent(email)}`
     : `${V3_BASE}/subscriptions`;
-  const { data } = await axios.get(url, { headers: await v3Headers() });
+  const { data } = await axios.get(url, { headers: v3Headers() });
   if (data.status !== 'success') throw new Error('[FLW v3] listSubscriptions failed: ' + JSON.stringify(data));
   return data.data;
 }
@@ -296,7 +299,7 @@ async function listSubscriptions({ email } = {}) {
  * Get the ID first via listSubscriptions({ email }).
  */
 async function cancelCustomerSubscription(subscriptionId) {
-  const { data } = await axios.put(`${V3_BASE}/subscriptions/${subscriptionId}/cancel`, {}, { headers: await v3Headers() });
+  const { data } = await axios.put(`${V3_BASE}/subscriptions/${subscriptionId}/cancel`, {}, { headers: v3Headers() });
   return data;
 }
 

@@ -46,7 +46,10 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; }, // needed for Paystack webhook HMAC verification
+}));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Security headers

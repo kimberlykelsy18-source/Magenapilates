@@ -26,22 +26,17 @@ module.exports = ({ transporter }) => {
   //   subscription.disable    → rental subscription cancelled
   //   subscription.not_renew  → subscription set to not renew (treated as cancelled)
   //
-  // IMPORTANT: use express.raw() so we get the raw buffer for signature verification.
-  router.post('/paystack/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  // IMPORTANT: signature verification uses req.rawBody (the raw Buffer saved by express.json verify callback).
+  router.post('/paystack/webhook', async (req, res) => {
     const signature = req.headers['x-paystack-signature'];
-    const rawBody   = req.body; // Buffer (because express.raw())
+    const rawBody   = req.rawBody; // Buffer saved by express.json verify in index.js
 
-    if (!paystack.verifyWebhookSignature(rawBody, signature)) {
+    if (!rawBody || !paystack.verifyWebhookSignature(rawBody, signature)) {
       console.warn('[Paystack Webhook] Invalid signature — ignoring');
       return res.status(401).send('Unauthorized');
     }
 
-    let event;
-    try {
-      event = JSON.parse(rawBody.toString('utf8'));
-    } catch {
-      return res.status(400).send('Bad Request');
-    }
+    const event = req.body; // already parsed by express.json
 
     const eventType = event?.event;
     console.log('[Paystack Webhook]', eventType, '| ref:', event?.data?.reference);
