@@ -27,12 +27,26 @@ const corsOptions = {
 
     const allowed = process.env.FRONTEND_URL?.trim();
 
-    // Allow exact match, any vercel.app preview URL, and localhost for dev
+    // Derive bare domain from FRONTEND_URL to also allow www/non-www variant
+    // e.g. https://magenapilates.com → also allows https://www.magenapilates.com
+    const allowedVariants = [];
+    if (allowed) {
+      allowedVariants.push(allowed);
+      try {
+        const url = new URL(allowed);
+        if (url.hostname.startsWith('www.')) {
+          allowedVariants.push(`${url.protocol}//${url.hostname.slice(4)}`);
+        } else {
+          allowedVariants.push(`${url.protocol}//www.${url.hostname}`);
+        }
+      } catch (_) { /* ignore invalid URL */ }
+    }
+
     if (
-      !allowed ||                                    // not set → allow all
-      origin === allowed ||                          // exact production URL
-      /^https?:\/\/localhost(:\d+)?$/.test(origin) || // local dev
-      /\.vercel\.app$/.test(origin)                  // Vercel preview URLs
+      !allowed ||                                      // not set → allow all
+      allowedVariants.includes(origin) ||              // production URL (www + non-www)
+      /^https?:\/\/localhost(:\d+)?$/.test(origin) ||  // local dev
+      /\.vercel\.app$/.test(origin)                    // Vercel preview URLs
     ) {
       return callback(null, true);
     }
