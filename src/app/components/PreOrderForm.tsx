@@ -41,7 +41,7 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
   const ENGRAVING_VALUE_KES = 3500;
   const convertedEngravingValue = convertPrice(ENGRAVING_VALUE_KES, selectedCurrency as Currency);
 
-  const VAT_RATE = 0.11; // 11% VAT on purchases
+  const VAT_RATE = 0.16; // 16% VAT on purchases
 
   const getSubtotal = () => {
     if (formData.orderType === 'purchase') {
@@ -325,7 +325,7 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
           </div>
           {formData.orderType === 'purchase' && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>VAT (11%):</span>
+              <span>VAT (16%):</span>
               <span>{currencySymbol} {getVAT().toLocaleString()}</span>
             </div>
           )}

@@ -1,6 +1,6 @@
 'use strict';
 
-const VAT_RATE = 0.11; // 11% VAT applied to purchases
+const VAT_RATE = 0.16; // 16% VAT applied to purchases
 
 /**
  * Magena Pilates branded invoice / confirmation email.
@@ -29,7 +29,7 @@ function buildInvoiceEmail({ order, shortId, amountPaid, reference, isRental = f
     vatAmount = Number(amountPaid) - subtotal;
     vatRow = `
       <tr>
-        <td colspan="3" style="padding:8px 12px;text-align:right;color:#555;font-size:13px;border-top:1px solid #e5e5e5">Value-Added Tax (11%)</td>
+        <td colspan="3" style="padding:8px 12px;text-align:right;color:#555;font-size:13px;border-top:1px solid #e5e5e5">Value-Added Tax (16%)</td>
         <td style="padding:8px 12px;text-align:right;font-size:13px;color:#555;border-top:1px solid #e5e5e5"><strong>KES ${vatAmount.toLocaleString()}</strong></td>
       </tr>`;
   }

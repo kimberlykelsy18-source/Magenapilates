@@ -234,18 +234,34 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
           <h3 className="text-xl mb-1">M-PESA Payment</h3>
           <p className="text-2xl font-medium text-[#3D3530]">KES {totalAmount.toLocaleString()}</p>
         </div>
-        <div className="flex items-center gap-3 p-4 rounded border bg-green-50 border-green-200">
-          <Smartphone className="h-8 w-8 text-green-700 shrink-0" />
-          <div>
-            <h4 className="font-medium text-green-900">Pay via M-PESA Paybill</h4>
-            <p className="text-sm text-green-700">We'll confirm your order within 24 hours after payment.</p>
+        <div className="p-4 rounded border bg-green-50 border-green-200 space-y-3">
+          <div className="flex items-center gap-3">
+            <Smartphone className="h-8 w-8 text-green-700 shrink-0" />
+            <h4 className="font-medium text-green-900">M-PESA Payment Details</h4>
           </div>
+          <div className="space-y-2 text-sm text-green-800">
+            <div className="flex justify-between">
+              <span className="text-green-700">Pay Bill Number</span>
+              <span className="font-bold tracking-wide">522533</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-green-700">A/C Number</span>
+              <span className="font-bold tracking-wide">8070790</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-green-700">Account Name</span>
+              <span className="font-bold">MAGENA PILATES</span>
+            </div>
+          </div>
+          <p className="text-xs text-green-700 border-t border-green-200 pt-2">
+            Pay the exact amount shown above, then click <strong>I Have Paid</strong>. We will confirm your order within 24 hours.
+          </p>
         </div>
         <OrderSummary />
         {error && <p className="text-red-600 text-sm">{error}</p>}
         <div className="flex gap-3">
           <Button onClick={handleMpesa} disabled={loading} className="flex-1 text-white py-6 bg-green-600 hover:bg-green-700">
-            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Placing Order...</> : <><Smartphone className="h-4 w-4 mr-2" />Place M-PESA Order</>}
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Submitting...</> : <><Smartphone className="h-4 w-4 mr-2" />I Have Paid</>}
           </Button>
           <Button onClick={onCancel} variant="outline" disabled={loading} className="px-6">Cancel</Button>
         </div>
