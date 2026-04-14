@@ -93,7 +93,7 @@ app.use('/api/admin/login', loginLimiter);
 app.use(createProductRoutes({ supabase, serviceSupabase }));
 app.use(createOrderRoutes({ supabase, serviceSupabase, transporter }));
 app.use(createPaymentRoutes({ transporter }));
-app.use(createAdminRoutes({ serviceSupabase }));
+app.use(createAdminRoutes({ serviceSupabase, transporter }));
 
 // Public — get site settings
 app.get('/api/settings', async (req, res) => {

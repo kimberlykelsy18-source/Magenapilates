@@ -1,5 +1,6 @@
 const express = require('express');
 const paystack = require('../services/paystack');
+const { buildInvoiceEmail } = require('../config/emailTemplates');
 
 function toShortOrderId(n) {
   if (!n) return 'PRE-???';
@@ -184,6 +185,18 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
 
     // ── M-PESA — manual paybill flow ─────────────────────────────────────────
     if (payment_method === 'mpesa') {
+      // Send pending invoice email to customer immediately
+      if (customer_email && transporter) {
+        const isRental = order_type === 'rental';
+        const emailAmount = Number(total_amount) + Number(deposit_amount || 0);
+        transporter.sendMail({
+          from:    `"Magena Pilates" <${process.env.RESEND_FROM || "noreply@magenapilates.com"}>`,
+          to:      customer_email,
+          subject: `Invoice ${shortId} — Magena Pilates`,
+          html:    buildInvoiceEmail({ order, shortId, amountPaid: emailAmount, isRental, isPending: true }),
+        }).catch((e) => console.error('[Orders] M-PESA invoice email error:', e.message));
+      }
+
       return res.status(201).json({
         order_id:       order.id,
         short_id:       shortId,

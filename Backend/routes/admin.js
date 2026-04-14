@@ -2,8 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const requireAdmin = require('../middleware/auth');
+const { buildInvoiceEmail } = require('../config/emailTemplates');
 
-module.exports = ({ serviceSupabase }) => {
+module.exports = ({ serviceSupabase, transporter }) => {
   const router = express.Router();
 
   // POST /api/admin/login
@@ -101,6 +102,13 @@ module.exports = ({ serviceSupabase }) => {
     if (notes !== undefined) update.notes = notes;
     if (shipping_status) update.shipping_status = shipping_status;
 
+    // Fetch current order BEFORE update so we know the previous status
+    const { data: existing } = await serviceSupabase
+      .from('pre_orders')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const { data, error } = await serviceSupabase
       .from('pre_orders')
       .update(update)
@@ -110,6 +118,34 @@ module.exports = ({ serviceSupabase }) => {
 
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'Order not found' });
+
+    // Send confirmed invoice to customer when admin confirms a pending M-PESA order
+    if (
+      status === 'confirmed' &&
+      existing?.status === 'pending_payment' &&
+      existing?.payment_method === 'mpesa' &&
+      existing?.customer_email &&
+      transporter
+    ) {
+      function toShortId(n) {
+        if (!n) return 'PRE-???';
+        const letterIndex = Math.floor((n - 1) / 999);
+        const numPart = ((n - 1) % 999) + 1;
+        const letter = String.fromCharCode(65 + letterIndex);
+        return `PRE-${letter}${String(numPart).padStart(3, '0')}`;
+      }
+      const shortId   = toShortId(existing.order_number);
+      const isRental  = existing.order_type === 'rental';
+      const amountPaid = Number(existing.total_amount) + Number(existing.deposit_amount || 0);
+
+      transporter.sendMail({
+        from:    `"Magena Pilates" <${process.env.RESEND_FROM || "noreply@magenapilates.com"}>`,
+        to:      existing.customer_email,
+        subject: `Payment Confirmed — Invoice ${shortId} · Magena Pilates`,
+        html:    buildInvoiceEmail({ order: existing, shortId, amountPaid, isRental, isPending: false }),
+      }).catch((e) => console.error('[Admin] Confirmation email error:', e.message));
+    }
+
     res.json(data);
   });
 

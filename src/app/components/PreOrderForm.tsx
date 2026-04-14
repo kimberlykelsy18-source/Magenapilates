@@ -41,12 +41,25 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
   const ENGRAVING_VALUE_KES = 3500;
   const convertedEngravingValue = convertPrice(ENGRAVING_VALUE_KES, selectedCurrency as Currency);
 
-  const calculateTotal = () => {
+  const VAT_RATE = 0.11; // 11% VAT on purchases
+
+  const getSubtotal = () => {
     if (formData.orderType === 'purchase') {
       return (convertedPrices.purchasePrice || 0) * quantity;
     } else {
       return (convertedPrices.rentalPrice || 0) * quantity;
     }
+  };
+
+  const getVAT = () => {
+    if (formData.orderType === 'purchase') {
+      return Math.round(getSubtotal() * VAT_RATE);
+    }
+    return 0;
+  };
+
+  const calculateTotal = () => {
+    return getSubtotal() + getVAT();
   };
 
   const getDeposit = () => {
@@ -306,25 +319,31 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
             <span>Product:</span>
             <span>{product.name} × {quantity}</span>
           </div>
-          <div className="flex justify-between">
-            <span>{formData.orderType === 'purchase' ? 'Purchase Price:' : 'Monthly Rental:'}</span>
-            <span className="font-medium">{currencySymbol} {calculateTotal().toLocaleString()}</span>
+          <div className="flex justify-between text-sm">
+            <span>{formData.orderType === 'purchase' ? 'Subtotal:' : 'Monthly Rental:'}</span>
+            <span className="font-medium">{currencySymbol} {getSubtotal().toLocaleString()}</span>
           </div>
+          {formData.orderType === 'purchase' && (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>VAT (11%):</span>
+              <span>{currencySymbol} {getVAT().toLocaleString()}</span>
+            </div>
+          )}
           {getDeposit() > 0 && (
-            <div className="flex justify-between">
+            <div className="flex justify-between text-sm">
               <span>Refundable Deposit:</span>
               <span className="font-medium">{currencySymbol} {getDeposit().toLocaleString()}</span>
             </div>
           )}
           {formData.wantsEngraving && (
-            <div className="flex justify-between text-green-700">
+            <div className="flex justify-between text-sm text-green-700">
               <span>FREE Engraving:</span>
               <span className="font-medium">{currencySymbol} 0 (saves {currencySymbol} {(convertedEngravingValue * quantity).toLocaleString()})</span>
             </div>
           )}
           <div className="flex justify-between text-lg border-t pt-2 mt-2">
             <span className="font-medium">
-              {formData.orderType === 'purchase' ? 'Total Amount:' : 'Due Now (Deposit + 1st Month):'}
+              {formData.orderType === 'purchase' ? 'Total (incl. VAT):' : 'Due Now (Deposit + 1st Month):'}
             </span>
             <span className="font-medium">{currencySymbol} {(calculateTotal() + getDeposit()).toLocaleString()}</span>
           </div>
