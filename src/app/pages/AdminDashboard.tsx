@@ -160,7 +160,7 @@ export function AdminDashboard() {
   const isSettingsPage = location.pathname === '/admin/settings';
 
   return (
-    <div className="min-h-screen" style={{ backgroundImage: `url(${adminDashBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen" style={{ backgroundImage: `url(${adminDashBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
       <header className="bg-[#3D3530] text-white border-b border-[#2D2520]">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <img
