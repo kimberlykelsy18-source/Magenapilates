@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
-import { Package, ShoppingCart, LogOut, Settings, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Package, ShoppingCart, LogOut, Settings, Lock, Eye, EyeOff, ArrowRight, Mail } from 'lucide-react';
 import adminLoginBg from '../../assets/admin_login_bg.png';
 import adminDashBg from '../../assets/admin_dashboard_bg.png';
 import logoStackedDark from '../../assets/magena-logo-stacked-dark.svg';
@@ -21,6 +21,7 @@ export function adminHeaders() {
 
 export function AdminDashboard() {
   const location = useLocation();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(
     !!localStorage.getItem('admin_token')
@@ -38,7 +39,7 @@ export function AdminDashboard() {
       const res = await fetch(`${API}/api/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
@@ -55,6 +56,7 @@ export function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
     setIsAuthenticated(false);
+    setEmail('');
     setPassword('');
   };
 
@@ -86,6 +88,24 @@ export function AdminDashboard() {
             <p className="text-[13px] text-[#6B5C53] mb-7">Sign in to your admin account</p>
 
             <form onSubmit={handleLogin} className="space-y-4">
+              {/* Email */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-[#6B5C53] mb-1.5">
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-11 py-3.5 rounded-xl bg-white border border-gray-200 focus:border-[#3D3530] focus:ring-2 focus:ring-[#3D3530]/10 outline-none transition-all text-[14px] text-gray-900 placeholder:text-gray-400"
+                    placeholder="admin@example.com"
+                    required
+                  />
+                </div>
+              </div>
+
               {/* Password */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-[#6B5C53] mb-1.5">

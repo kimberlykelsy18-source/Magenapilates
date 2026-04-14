@@ -9,17 +9,20 @@ module.exports = ({ serviceSupabase, transporter }) => {
 
   // POST /api/admin/login
   router.post('/api/admin/login', async (_req, res) => {
-    const { password } = _req.body;
-    if (!password) return res.status(400).json({ error: 'Password required' });
+    const { email, password } = _req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
+    const adminEmail    = process.env.ADMIN_EMAIL;
     const adminPassword = process.env.ADMIN_PASSWORD;
-    if (!adminPassword) return res.status(500).json({ error: 'Admin not configured' });
+    if (!adminEmail || !adminPassword) return res.status(500).json({ error: 'Admin not configured' });
+
+    if (email.toLowerCase() !== adminEmail.toLowerCase())
+      return res.status(401).json({ error: 'Invalid email or password' });
 
     const match = await bcrypt.compare(password, adminPassword).catch(() => false);
-    // Also allow plaintext comparison during initial setup (before hashing)
     const valid = match || password === adminPassword;
 
-    if (!valid) return res.status(401).json({ error: 'Incorrect password' });
+    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
 
     const token = jwt.sign({ role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '12h' });
     res.json({ token });
