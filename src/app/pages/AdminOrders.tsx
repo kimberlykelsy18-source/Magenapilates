@@ -28,7 +28,7 @@ interface Order {
   status: string;
   shipping_status: string;
   created_at: string;
-  pesapal_tracking_id?: string | null;
+  transaction_id?: string | null;
   payment_reference?: string | null;
 }
 
@@ -190,7 +190,7 @@ export function AdminOrders() {
     <div class="section-title">Payment</div>
     <div class="row"><span class="label">Method</span><span class="val" style="text-transform:uppercase">${order.payment_method}</span></div>
     ${order.payment_reference ? `<div class="row"><span class="label">Payment Ref</span><span class="val" style="font-family:monospace">${order.payment_reference}</span></div>` : ''}
-    ${order.pesapal_tracking_id ? `<div class="row"><span class="label">Transaction ID</span><span class="val" style="font-family:monospace;font-size:11px">${order.pesapal_tracking_id}</span></div>` : ''}
+    ${order.transaction_id ? `<div class="row"><span class="label">Transaction ID</span><span class="val" style="font-family:monospace;font-size:11px">${order.transaction_id}</span></div>` : ''}
     <div class="row"><span class="label">Product Amount</span><span class="val">KES ${Number(order.total_amount).toLocaleString()}</span></div>
     ${order.deposit_amount > 0 ? `<div class="row"><span class="label">Deposit</span><span class="val">KES ${Number(order.deposit_amount).toLocaleString()}</span></div>` : ''}
     <div class="total-row"><span>Total Paid</span><span>KES ${total}</span></div>
@@ -378,10 +378,10 @@ export function AdminOrders() {
                 <Label>Payment Method:</Label>
                 <span className="uppercase">{selectedOrder.payment_method}</span>
               </div>
-              {selectedOrder.pesapal_tracking_id && (
+              {selectedOrder.transaction_id && (
                 <div className="grid grid-cols-2 gap-2">
                   <Label>Transaction ID:</Label>
-                  <span className="font-mono text-xs break-all">{selectedOrder.pesapal_tracking_id}</span>
+                  <span className="font-mono text-xs break-all">{selectedOrder.transaction_id}</span>
                 </div>
               )}
               {selectedOrder.payment_reference && (

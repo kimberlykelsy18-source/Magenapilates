@@ -73,7 +73,7 @@ module.exports = ({ serviceSupabase, transporter }) => {
       const payment = Array.isArray(o.payments) ? o.payments[0] : null;
       return {
         ...o,
-        pesapal_tracking_id: payment?.checkout_request_id || null,
+        transaction_id: payment?.checkout_request_id || null,
         payment_reference: payment?.payment_reference || null,
         payment_status: payment?.status || null,
         payments: undefined,

@@ -20,10 +20,10 @@ interface Order {
 
 export function OrderSuccess() {
   const [params] = useSearchParams();
-  // Paystack hosted checkout appends: ?reference=xxx&trxref=xxx
-  // Direct card payments navigate here with order_id after inline success
-  const reference  = params.get('reference') || params.get('trxref');
-  const flwStatus  = params.get('status'); // 'cancelled' from some redirects
+  // Paystack appends: ?reference=xxx&trxref=xxx
+  // When a transaction is abandoned, Paystack also appends ?status=cancelled
+  const reference = params.get('reference') || params.get('trxref');
+  const txStatus  = params.get('status');
 
   const [status, setStatus] = useState<'loading' | 'completed' | 'failed' | 'pending' | 'error'>('loading');
   const [order, setOrder] = useState<Order | null>(null);
@@ -37,8 +37,7 @@ export function OrderSuccess() {
       return;
     }
 
-    // If Paystack explicitly says cancelled/failed, show immediately
-    if (flwStatus === 'cancelled' || flwStatus === 'failed') {
+    if (txStatus === 'cancelled' || txStatus === 'failed') {
       setStatus('failed');
       return;
     }
@@ -78,7 +77,7 @@ export function OrderSuccess() {
     poll();
 
     return () => { cancelled = true; };
-  }, [reference, flwStatus]);
+  }, [reference, txStatus]);
 
   if (status === 'loading') {
     return (
