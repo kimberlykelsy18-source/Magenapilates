@@ -114,7 +114,8 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
         return res.status(201).json({
           order_id:     order.id,
           short_id:     shortId,
-          redirect_url: tx.authorization_url,
+          redirect_url: tx.authorization_url, // fallback if popup is unavailable
+          access_code:  tx.access_code,
           reference,
           ...(planCode && { plan_code: planCode }),
         });

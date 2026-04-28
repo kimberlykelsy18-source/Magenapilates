@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import PaystackPop from '@paystack/inline-js';
 import { PreOrder } from '../types';
 import { Button } from './ui/button';
-import { Loader2, Smartphone, Lock, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { Loader2, Smartphone, Lock, CreditCard, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -59,7 +60,7 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
     }
   };
 
-  // ── CARD → Paystack hosted checkout (purchase and rental) ─────────────────
+  // ── CARD → Paystack inline popup (purchase and rental) ────────────────────
   const handleCardCheckout = async () => {
     setLoading(true);
     setError('');
@@ -70,7 +71,18 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
         body: JSON.stringify(basePayload()),
       });
       if (!ok) throw new Error(data?.error || 'Failed to initiate checkout');
-      window.location.href = data.redirect_url;
+
+      setLoading(false);
+
+      const popup = new PaystackPop();
+      popup.resumeTransaction(data.access_code, {
+        onSuccess: (transaction) => {
+          window.location.href = `/order-success?reference=${encodeURIComponent(transaction.reference)}`;
+        },
+        onCancel: () => {
+          setError('Payment cancelled. You can try again when ready.');
+        },
+      });
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please try again.');
       setLoading(false);
@@ -164,22 +176,22 @@ export function CheckoutFlow({ order, totalAmount, onCancel, onSuccess }: Checko
         <div>
           <p className="font-medium text-blue-900 text-sm">Secured by Paystack</p>
           <p className="text-xs text-blue-700 mt-0.5">
-            You'll be redirected to Paystack's secure checkout. Visa, Mastercard, and Verve cards accepted.
+            Enter your card details securely via Paystack. Visa, Mastercard, and Verve cards accepted.
           </p>
         </div>
       </div>
       <OrderSummary />
       {order.orderType === 'rental' && (
         <div className="border p-3 text-xs rounded bg-blue-50 border-blue-200 text-blue-800">
-          After entering your card on the secure checkout page, your card will be charged automatically each month for 5 months. Subscription stops automatically after the 5th payment.
+          After entering your card in the secure popup, your card will be charged automatically each month for 5 months. Subscription stops automatically after the 5th payment.
         </div>
       )}
       {error && <p className="text-red-600 text-sm">{error}</p>}
       <div className="flex gap-3">
         <Button onClick={handleCardCheckout} disabled={loading} className="flex-1 text-white py-6 bg-[#3D3530] hover:bg-[#2D2520]">
           {loading
-            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Redirecting...</>
-            : <><ExternalLink className="h-4 w-4 mr-2" />Proceed to Paystack</>
+            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading...</>
+            : <><CreditCard className="h-4 w-4 mr-2" />Pay with Card</>
           }
         </Button>
         <Button onClick={onCancel} variant="outline" disabled={loading} className="px-6">Cancel</Button>
