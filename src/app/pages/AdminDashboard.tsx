@@ -3,8 +3,8 @@ import { Link, Outlet, useLocation } from 'react-router';
 import { Package, ShoppingCart, LogOut, Settings, Lock, Eye, EyeOff, ArrowRight, Mail, BarChart2, Users, Clock, DollarSign, Globe, Palette } from 'lucide-react';
 import adminLoginBg from '../../assets/admin_login_bg.png';
 import adminDashBg from '../../assets/admin_dashboard_bg.png';
-import logoStackedDark from '../../assets/magena-logo-stacked-dark.svg';
-import logoHorizontalDark from '../../assets/magena-logo-horizontal-dark.svg';
+import logoStackedDark from '../../assets/Magena Pilates Logo.jpeg';
+import logoHorizontalDark from '../../assets/Magena Pilates Logo.jpeg';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -76,7 +76,7 @@ export function AdminDashboard() {
       >
         <div className="flex-shrink-0 w-full md:w-[55%] min-h-[200px] md:min-h-0 flex flex-col items-center justify-center px-10 py-12 md:py-0">
           <div className="flex flex-col items-center text-center gap-4 max-w-xs">
-            <img src={logoStackedDark} alt="Magena Pilates" className="w-64 object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
+            <img src={logoStackedDark} alt="Magena Pilates" className="w-48 object-contain bg-[#EBE6DD] p-2" />
             <p className="text-[#EBE6DD]/80 text-xs tracking-[0.3em] uppercase font-medium">Admin Portal</p>
           </div>
         </div>
@@ -125,7 +125,7 @@ export function AdminDashboard() {
     <div className="min-h-screen" style={{ backgroundImage: `url(${adminDashBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
       <header className="bg-[#3D3530] text-white border-b border-[#2D2520]">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <img src={logoHorizontalDark} alt="Magena Pilates" className="h-10 w-auto object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
+          <img src={logoHorizontalDark} alt="Magena Pilates" className="h-10 w-auto object-contain bg-[#EBE6DD] px-2 py-0.5" />
           <div className="flex gap-4 items-center">
             <Link to="/" className="text-sm hover:underline">View Customer Page</Link>
             <button onClick={handleLogout} className="text-sm border border-white px-3 py-1 hover:bg-white hover:text-[#3D3530]">

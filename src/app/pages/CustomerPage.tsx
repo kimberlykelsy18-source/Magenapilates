@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Minus, Plus, Globe, Clock, Instagram } from 'lucide-react';
 import { Currency, currencies, convertPrice, formatPrice } from '../utils/currency';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import logoImg from '../../assets/magena-logo-stacked-dark.svg';
+import logoImg from '../../assets/Magena Pilates Logo.jpeg';
 import customerBg from '../../assets/customer_page_bg.png';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -195,17 +195,6 @@ export function CustomerPage() {
           </div>
         </div>
 
-        {/* Pre-order Terms */}
-        {settings.terms.length > 0 && (
-          <div className="bg-white border border-[#3D3530] p-6 mb-8">
-            <h2 className="text-lg mb-3 text-[#3D3530]">PRE-ORDER TERMS</h2>
-            <div className="space-y-3 text-sm text-[#3D3530]">
-              {settings.terms.map((term, index) => (
-                <p key={index}>• {term}</p>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Available Products */}
         <div className="space-y-6">
@@ -315,10 +304,13 @@ export function CustomerPage() {
         <div className="max-w-4xl mx-auto px-4">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-center md:text-left">
-              <img src={logoImg} alt="Magena Pilates" className="h-12 mx-auto md:mx-0 mb-2" style={{ filter: 'brightness(0) invert(1)' }} />
+              <img src={logoImg} alt="Magena Pilates" className="h-12 mx-auto md:mx-0 mb-2 bg-[#EBE6DD] p-1" />
               {settings.footerDisclaimer && (
                 <p className="text-xs text-[#EBE6DD]/70 max-w-xs">{settings.footerDisclaimer}</p>
               )}
+              <p className="text-xs text-[#EBE6DD]/70 max-w-sm mt-2 leading-relaxed">
+                KES prices are inclusive of 16% VAT for Kenyan clients. USD prices are VAT exclusive and apply to international orders. Rental service is available in Kenya only (commercial use - studios/gyms). Each piece is handcrafted to order — delivery timeline confirmed after purchase.
+              </p>
             </div>
             <div className="flex flex-col items-center md:items-end gap-3">
               <div className="flex items-center gap-4">

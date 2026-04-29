@@ -94,8 +94,9 @@ This Rental Agreement is entered into between Magena Pilates ("Company") and the
 
 By signing below, I confirm that I am authorised to enter this agreement on behalf of the business, and that all information provided is accurate.`;
 
-export function PreOrderForm({ product, quantity, selectedCurrency, currencySymbol, convertedPrices, onSuccess }: PreOrderFormProps) {
+export function PreOrderForm({ product, quantity: initialQuantity, selectedCurrency, currencySymbol, convertedPrices, onSuccess }: PreOrderFormProps) {
   const [step, setStep] = useState<'form' | 'rental-agreement' | 'checkout'>('form');
+  const [quantity, setQuantity] = useState(initialQuantity);
   const [pendingOrder, setPendingOrder] = useState<PreOrder | null>(null);
   const [countries, setCountries] = useState<CountrySettings[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<CountrySettings | null>(null);
@@ -125,7 +126,7 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
     customerAddress: '',
     cityTown: '',
     whatsappNumber: '',
-    customerCountry: '',
+    customerCountry: selectedCurrency === 'KES' ? 'Kenya' : '',
     notes: '',
     paymentMethod: 'mpesa' as 'mpesa' | 'card',
   });
@@ -133,7 +134,15 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
   useEffect(() => {
     fetch(`${API}/api/settings/countries`)
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setCountries(data); })
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCountries(data);
+          if (selectedCurrency === 'KES') {
+            const kenya = data.find((c: CountrySettings) => c.country_name === 'Kenya') || null;
+            setSelectedCountry(kenya);
+          }
+        }
+      })
       .catch(() => {});
 
     fetch(`${API}/api/settings`)
@@ -384,21 +393,20 @@ export function PreOrderForm({ product, quantity, selectedCurrency, currencySymb
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => {/* quantity managed by parent */ }}
-              className="border border-[#3D3530] p-2 hover:bg-gray-100 opacity-50 cursor-default"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              className="border border-[#3D3530] p-2 hover:bg-gray-100"
             >
               <span className="text-sm">−</span>
             </button>
             <span className="text-lg font-medium w-12 text-center">{quantity}</span>
             <button
               type="button"
-              onClick={() => {/* quantity managed by parent */ }}
-              className="border border-[#3D3530] p-2 hover:bg-gray-100 opacity-50 cursor-default"
+              onClick={() => setQuantity((q) => q + 1)}
+              className="border border-[#3D3530] p-2 hover:bg-gray-100"
             >
               <span className="text-sm">+</span>
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1">Adjust quantity on the product listing before opening this form.</p>
         </div>
       </div>
 
