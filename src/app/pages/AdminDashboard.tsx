@@ -3,8 +3,8 @@ import { Link, Outlet, useLocation } from 'react-router';
 import { Package, ShoppingCart, LogOut, Settings, Lock, Eye, EyeOff, ArrowRight, Mail, BarChart2, Users, Clock, DollarSign, Globe, Palette } from 'lucide-react';
 import adminLoginBg from '../../assets/admin_login_bg.png';
 import adminDashBg from '../../assets/admin_dashboard_bg.png';
-import logoStackedDark from '../../assets/Magena Pilates Logo.jpeg';
-import logoHorizontalDark from '../../assets/Magena Pilates Logo.jpeg';
+import logoStackedDark from '../../assets/magena-pilates-logo.jpeg';
+import logoHorizontalDark from '../../assets/magena-pilates-logo.jpeg';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 

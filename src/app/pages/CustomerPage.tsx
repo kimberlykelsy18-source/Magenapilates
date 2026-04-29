@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Minus, Plus, Globe, Clock, Instagram } from 'lucide-react';
 import { Currency, currencies, convertPrice, formatPrice } from '../utils/currency';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import logoImg from '../../assets/Magena Pilates Logo.jpeg';
+import logoImg from '../../assets/magena-pilates-logo.jpeg';
 import customerBg from '../../assets/customer_page_bg.png';
 
 const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
