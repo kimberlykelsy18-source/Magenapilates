@@ -171,6 +171,11 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
 
     // ── M-PESA — manual paybill, status = payment_verification_pending ────────
     if (payment_method === 'mpesa') {
+      // Read paybill from site_settings (admin-configurable), fallback to env var
+      const { data: siteCfg } = await serviceSupabase
+        .from('site_settings').select('mpesa_paybill').eq('id', 1).single();
+      const paybill = siteCfg?.mpesa_paybill || process.env.MPESA_PAYBILL || '';
+
       if (customer_email && transporter) {
         transporter.sendMail({
           from: `"Magena Pilates" <${process.env.RESEND_FROM || 'noreply@magenapilates.com'}>`,
@@ -191,7 +196,7 @@ module.exports = ({ supabase, serviceSupabase, transporter }) => {
         order_id: order.id,
         short_id: shortId,
         payment_method: 'mpesa',
-        mpesa_paybill: process.env.MPESA_PAYBILL || '',
+        mpesa_paybill: paybill,
         message: 'Order received. Please pay via M-PESA paybill using your order ID as the account number.',
       });
     }

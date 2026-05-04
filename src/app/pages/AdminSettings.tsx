@@ -18,6 +18,7 @@ interface Settings {
   footer_disclaimer: string;
   post_order_message: string;
   waitlist_message: string;
+  mpesa_paybill: string;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -31,6 +32,7 @@ const DEFAULT_SETTINGS: Settings = {
   footer_disclaimer: '',
   post_order_message: '',
   waitlist_message: '',
+  mpesa_paybill: '',
 };
 
 export function AdminSettings() {
@@ -57,6 +59,7 @@ export function AdminSettings() {
           footer_disclaimer: s.footer_disclaimer || '',
           post_order_message: s.post_order_message || '',
           waitlist_message: s.waitlist_message || '',
+          mpesa_paybill: s.mpesa_paybill || '',
         });
       })
       .catch(() => toast.error('Failed to load settings'))
@@ -184,6 +187,22 @@ export function AdminSettings() {
                     className="w-full border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#3D3530]" />
                   <p className="text-xs text-gray-400 mt-1">Charged for engraving after the pre-order period ends</p>
                 </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-widest text-[#3D3530] mb-4">M-PESA Payment</h3>
+              <div className="max-w-xs">
+                <label className="block text-xs text-gray-500 mb-1">Paybill Business Number</label>
+                <input
+                  value={settings.mpesa_paybill}
+                  onChange={(e) => setSettings({ ...settings, mpesa_paybill: e.target.value })}
+                  placeholder="e.g. 522533"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#3D3530]"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Shown to customers during M-PESA checkout. Change this whenever your paybill number changes — no redeploy needed.
+                </p>
               </div>
             </div>
           </>
