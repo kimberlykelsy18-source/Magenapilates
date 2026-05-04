@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Product, SiteSettings } from '../types';
-import { storage } from '../utils/storage';
 import { initialProducts } from '../data/initialProducts';
 import { PreOrderForm } from '../components/PreOrderForm';
 import { IntroAnimation } from '../components/IntroAnimation';
@@ -12,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import logoImg from '../../assets/magena-pilates-logo.jpeg';
 import customerBg from '../../assets/customer_page_bg.png';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 function mapApiProduct(p: any): Product {
   return {
@@ -66,7 +65,13 @@ export function CustomerPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [showForm, setShowForm] = useState(false);
-  const [settings, setSettings] = useState<SiteSettings>(storage.getSettings());
+  const [settings, setSettings] = useState<SiteSettings>({
+    terms: [],
+    engravingPrice: 3500,
+    rentalFixedMonths: 5,
+    leatherFinishes: [],
+    woodFinishes: [],
+  });
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('KES');
 
   const handleIntroComplete = () => {
@@ -98,7 +103,7 @@ export function CustomerPage() {
     fetch(`${API}/api/settings`)
       .then((r) => r.json())
       .then((data) => { if (data && !data.error) setSettings(mapApiSettings(data)); })
-      .catch(() => { setSettings(storage.getSettings()); });
+      .catch(() => {});
   }, []);
 
   const handleOrderClick = (product: Product) => {

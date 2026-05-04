@@ -62,21 +62,17 @@ module.exports = ({ serviceSupabase, transporter }) => {
   });
 
   router.put('/api/admin/settings', requireAdmin, async (req, res) => {
-    const {
-      terms, engraving_price, rental_fixed_months, rental_deposit_formula,
-      instagram_url, pinterest_url, whatsapp_number, footer_disclaimer,
-      post_order_message, waitlist_message, exchange_rate,
-    } = req.body;
+    const ALLOWED = ['terms', 'engraving_price', 'rental_fixed_months', 'rental_deposit_formula',
+      'instagram_url', 'pinterest_url', 'whatsapp_number', 'footer_disclaimer',
+      'post_order_message', 'waitlist_message', 'exchange_rate'];
+    const updates = { id: 1, updated_at: new Date().toISOString() };
+    for (const field of ALLOWED) {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) updates[field] = req.body[field];
+    }
 
     const { data, error } = await serviceSupabase
       .from('site_settings')
-      .upsert({
-        id: 1,
-        terms, engraving_price, rental_fixed_months, rental_deposit_formula,
-        instagram_url, pinterest_url, whatsapp_number, footer_disclaimer,
-        post_order_message, waitlist_message, exchange_rate,
-        updated_at: new Date().toISOString(),
-      })
+      .upsert(updates)
       .select().single();
 
     if (error) return res.status(500).json({ error: error.message });

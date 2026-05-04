@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { convertPrice, type Currency } from '../utils/currency';
 import { Building2, Search } from 'lucide-react';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 interface PreOrderFormProps {
   product: Product;

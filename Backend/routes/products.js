@@ -30,16 +30,20 @@ module.exports = ({ supabase, serviceSupabase }) => {
     res.status(201).json(data);
   });
 
-  // Admin — update product
+  // Admin — update product (partial: only updates fields present in the request body)
   router.put('/api/admin/products/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
-    const { name, description, image_url, purchase_price, rental_price, rental_deposit, status,
-      usd_price, has_height_sizing, leather_finishes, wood_finishes } = req.body;
+    const ALLOWED = ['name', 'description', 'image_url', 'purchase_price', 'rental_price',
+      'rental_deposit', 'status', 'usd_price', 'has_height_sizing', 'leather_finishes', 'wood_finishes'];
+    const updates = {};
+    for (const field of ALLOWED) {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) updates[field] = req.body[field];
+    }
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'No fields to update' });
 
     const { data, error } = await serviceSupabase
       .from('products')
-      .update({ name, description, image_url, purchase_price, rental_price, rental_deposit, status,
-        usd_price, has_height_sizing, leather_finishes, wood_finishes })
+      .update(updates)
       .eq('id', id).select().single();
 
     if (error) return res.status(500).json({ error: error.message });

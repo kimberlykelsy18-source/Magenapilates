@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Save, X, Globe, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminHeaders } from './AdminDashboard';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 interface Country {
   id?: string;

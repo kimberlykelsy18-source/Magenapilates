@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Loader2, Smartphone, Lock, CreditCard, CheckCircle2, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 const DEFAULT_PAYBILL = '522533';
 
 interface CheckoutFlowProps {

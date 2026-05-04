@@ -3,7 +3,7 @@ import { Search, Users, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminHeaders } from './AdminDashboard';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 interface Customer {
   customer_name: string;

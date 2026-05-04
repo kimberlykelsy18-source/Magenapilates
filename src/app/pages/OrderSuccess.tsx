@@ -3,7 +3,7 @@ import { useSearchParams, Link } from 'react-router';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 interface Order {
   id: string;

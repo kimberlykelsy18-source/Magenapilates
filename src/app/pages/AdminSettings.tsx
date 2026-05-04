@@ -3,7 +3,7 @@ import { Save, Instagram, MessageCircle, Link as LinkIcon, KeyRound } from 'luci
 import { toast } from 'sonner';
 import { adminHeaders } from './AdminDashboard';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 type Tab = 'general' | 'rental' | 'confirmation' | 'admin';
 

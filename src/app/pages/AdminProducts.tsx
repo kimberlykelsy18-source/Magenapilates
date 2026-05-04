@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { Pencil, Plus, Upload, Trash2 } from 'lucide-react';
 import { adminHeaders } from './AdminDashboard';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 interface Product {
   id: string;

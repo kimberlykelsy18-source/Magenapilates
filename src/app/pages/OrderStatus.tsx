@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Search, Package, CheckCircle2, Clock, XCircle, AlertCircle, Truck } from 'lucide-react';
 import { Link } from 'react-router';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode; description: string }> = {
   pending_payment: {

@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { Trash2, Eye, RefreshCw, Printer, CheckCircle2, XCircle, Download } from 'lucide-react';
 import { adminHeaders } from './AdminDashboard';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 interface Order {
   id: string;

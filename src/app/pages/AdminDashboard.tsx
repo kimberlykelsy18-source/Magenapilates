@@ -6,7 +6,7 @@ import adminDashBg from '../../assets/admin_dashboard_bg.png';
 import logoStackedDark from '../../assets/magena-pilates-logo.jpeg';
 import logoHorizontalDark from '../../assets/magena-pilates-logo.jpeg';
 
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { API_URL as API } from '../utils/config';
 
 export function getAdminToken() {
   return localStorage.getItem('admin_token');
