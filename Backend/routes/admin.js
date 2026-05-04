@@ -475,5 +475,91 @@ module.exports = ({ serviceSupabase, transporter }) => {
     });
   });
 
+  // ── Image Upload → Supabase Storage ──────────────────────────────────────
+
+  // Ensure the product-images bucket exists (idempotent)
+  async function ensureBucket() {
+    const { data: buckets } = await serviceSupabase.storage.listBuckets();
+    const exists = (buckets || []).some((b) => b.name === 'product-images');
+    if (!exists) {
+      await serviceSupabase.storage.createBucket('product-images', { public: true });
+    }
+  }
+
+  // POST /api/admin/upload — accept base64 image, store in Supabase Storage, return public URL
+  router.post('/api/admin/upload', requireAdmin, async (req, res) => {
+    const { image, filename } = req.body;
+    if (!image) return res.status(400).json({ error: 'image is required' });
+
+    const match = image.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: 'Invalid image format — expected base64 data URL' });
+
+    const mimeType = match[1];
+    const ext = mimeType.split('/')[1] || 'jpg';
+    const buffer = Buffer.from(match[2], 'base64');
+    const name = `${Date.now()}-${(filename || 'product').replace(/[^a-z0-9]/gi, '-')}.${ext}`;
+
+    try {
+      await ensureBucket();
+      const { error: upErr } = await serviceSupabase.storage
+        .from('product-images')
+        .upload(name, buffer, { contentType: mimeType, upsert: false });
+      if (upErr) return res.status(500).json({ error: upErr.message });
+
+      const { data: { publicUrl } } = serviceSupabase.storage
+        .from('product-images')
+        .getPublicUrl(name);
+
+      res.json({ url: publicUrl });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/migrate-images — one-time: move base64 images from DB to Storage
+  router.post('/api/admin/migrate-images', requireAdmin, async (req, res) => {
+    const { data: products, error } = await serviceSupabase
+      .from('products').select('id, name, image_url');
+    if (error) return res.status(500).json({ error: error.message });
+
+    const results = [];
+    await ensureBucket();
+
+    for (const p of (products || [])) {
+      if (!p.image_url || !p.image_url.startsWith('data:')) {
+        results.push({ id: p.id, name: p.name, status: 'skipped — already a URL' });
+        continue;
+      }
+      try {
+        const match = p.image_url.match(/^data:(image\/\w+);base64,(.+)$/);
+        if (!match) { results.push({ id: p.id, name: p.name, status: 'skipped — unrecognised format' }); continue; }
+
+        const mimeType = match[1];
+        const ext = mimeType.split('/')[1] || 'jpg';
+        const buffer = Buffer.from(match[2], 'base64');
+        const filename = `${p.id}.${ext}`;
+
+        await serviceSupabase.storage.from('product-images').remove([filename]).catch(() => {});
+        const { error: upErr } = await serviceSupabase.storage
+          .from('product-images')
+          .upload(filename, buffer, { contentType: mimeType, upsert: true });
+        if (upErr) { results.push({ id: p.id, name: p.name, status: `upload error: ${upErr.message}` }); continue; }
+
+        const { data: { publicUrl } } = serviceSupabase.storage
+          .from('product-images').getPublicUrl(filename);
+
+        const { error: updErr } = await serviceSupabase
+          .from('products').update({ image_url: publicUrl }).eq('id', p.id);
+        if (updErr) { results.push({ id: p.id, name: p.name, status: `db update error: ${updErr.message}` }); continue; }
+
+        results.push({ id: p.id, name: p.name, status: 'migrated', url: publicUrl });
+      } catch (err) {
+        results.push({ id: p.id, name: p.name, status: `error: ${err.message}` });
+      }
+    }
+
+    res.json({ results });
+  });
+
   return router;
 };

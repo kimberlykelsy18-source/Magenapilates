@@ -5,11 +5,12 @@ const requireAdmin = require('../middleware/auth');
 module.exports = ({ supabase, serviceSupabase }) => {
   const router = express.Router();
 
-  // Public — list all products
+  // Public — list all products (cached 5 min)
   router.get('/api/products', async (_req, res) => {
     const { data, error } = await supabase
       .from('products').select('*').order('created_at', { ascending: true });
     if (error) return res.status(500).json({ error: error.message });
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
   });
 

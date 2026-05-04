@@ -83,6 +83,7 @@ app.get('/api/settings', async (_req, res) => {
     .select('terms, engraving_price, rental_fixed_months, rental_deposit_formula, exchange_rate, instagram_url, pinterest_url, whatsapp_number, footer_disclaimer, post_order_message, waitlist_message, leather_finishes, wood_finishes, mpesa_paybill')
     .eq('id', 1).maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
+  res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
   res.json(data || { terms: [], engraving_price: 3500, rental_fixed_months: 5, exchange_rate: 130 });
 });
 

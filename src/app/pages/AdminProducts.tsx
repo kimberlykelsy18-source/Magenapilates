@@ -72,13 +72,41 @@ export function AdminProducts() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const b64 = reader.result as string;
+
+    // Resize to max 900px before uploading to keep storage small
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = async () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX = 900;
+      const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      const b64 = canvas.toDataURL('image/jpeg', 0.82);
+
       setImagePreview(b64);
-      setFormData({ ...formData, image_url: b64 });
+      setSaving(true);
+      try {
+        const res = await fetch(`${API}/api/admin/upload`, {
+          method: 'POST',
+          headers: adminHeaders(),
+          body: JSON.stringify({ image: b64, filename: file.name }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
+        setFormData((prev) => ({ ...prev, image_url: data.url }));
+        toast.success('Image uploaded');
+      } catch (err: any) {
+        toast.error(err.message);
+        setImagePreview('');
+      } finally {
+        setSaving(false);
+      }
     };
-    reader.readAsDataURL(file);
+    img.src = objectUrl;
   };
 
   const handleDelete = async (product: Product) => {

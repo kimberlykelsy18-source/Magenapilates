@@ -29,5 +29,20 @@ export default defineConfig({
         drop_debugger: true,
       },
     },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules/@radix-ui')) {
+            return 'vendor-radix';
+          }
+          if (id.includes('node_modules/lucide-react') || id.includes('node_modules/sonner')) {
+            return 'vendor-ui';
+          }
+        },
+      },
+    },
   },
 })
